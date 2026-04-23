@@ -1,0 +1,12 @@
+[project]
+name = "lap-backend"
+version = "0.1.0"
+description = "FastAPI + Celery + Postgres backend for LAP (Driver OS)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "LAP" }]
+dependencies = []
+
+[tool.uv]
+package = false
