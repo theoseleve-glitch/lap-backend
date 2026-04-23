@@ -8,6 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "LAP" }]
 dependencies = [
     "fastapi>=0.115",
+    "pydantic-settings>=2.0",
     "structlog>=24.0",
     "uvicorn>=0.30",
 ]
