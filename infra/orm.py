@@ -193,3 +193,25 @@ class ActionPrescription(Base):
         DateTime(timezone=True), nullable=True
     )
     outcome_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+
+
+class ActionOutcome(Base):
+    __tablename__ = "action_outcomes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    prescription_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("action_prescriptions.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+    )
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    session_ids_measured: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    success_condition_met: Mapped[bool] = mapped_column(Boolean)
+    measured_value: Mapped[float] = mapped_column(Float)
+    delta_vs_baseline: Mapped[float] = mapped_column(Float)
+    confidence_change: Mapped[float] = mapped_column(Float)
+    prescription_efficacy_score: Mapped[float] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
