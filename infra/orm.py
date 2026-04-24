@@ -62,3 +62,15 @@ class Session(Base):
     status: Mapped[str] = mapped_column(
         String(32), default="uploaded", server_default="uploaded"
     )
+
+
+class SessionRecord(Base):
+    __tablename__ = "session_records"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
