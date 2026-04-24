@@ -3,7 +3,16 @@ from typing import Any
 from uuid import UUID
 
 import uuid6
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    Uuid,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -74,3 +83,15 @@ class SessionRecord(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(
         JSON().with_variant(JSONB(), "postgresql")
     )
+
+
+class TelemetryArtifact(Base):
+    __tablename__ = "telemetry_artifacts"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), index=True
+    )
+    s3_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
