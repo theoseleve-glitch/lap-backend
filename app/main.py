@@ -4,8 +4,10 @@ from collections.abc import Awaitable, Callable
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.logging import configure_logging, logger
+from app.rate_limit import rate_limit_middleware
 
 configure_logging()
 
@@ -20,6 +22,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(BaseHTTPMiddleware, dispatch=rate_limit_middleware)
 
 
 @app.middleware("http")
