@@ -8,6 +8,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -115,3 +116,40 @@ class Lap(Base):
         JSON().with_variant(JSONB(), "postgresql")
     )
     valid: Mapped[bool] = mapped_column(Boolean)
+
+
+class WeaknessEpisode(Base):
+    __tablename__ = "weakness_episodes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    category: Mapped[str] = mapped_column(String(32))
+    subcategory: Mapped[str] = mapped_column(String(128))
+    corner_tag: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    environment_scope: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    first_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    recurrence_count: Mapped[int] = mapped_column(Integer)
+    sessions_affected: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    severity: Mapped[str] = mapped_column(String(16))
+    confidence: Mapped[float] = mapped_column(Float)
+    confidence_decay_per_day: Mapped[float] = mapped_column(
+        Float, default=0.02, server_default="0.02"
+    )
+    status: Mapped[str] = mapped_column(String(16))
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    linked_prescriptions: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    linked_insights: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    library_rule_id: Mapped[str] = mapped_column(String(128))
