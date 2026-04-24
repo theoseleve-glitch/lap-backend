@@ -9,7 +9,9 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -95,3 +97,21 @@ class TelemetryArtifact(Base):
     s3_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
     sha256: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(BigInteger)
+
+
+class Lap(Base):
+    __tablename__ = "laps"
+    __table_args__ = (
+        UniqueConstraint("session_id", "lap_number", name="uq_laps_session_lap"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), index=True
+    )
+    lap_number: Mapped[int] = mapped_column(Integer)
+    time_ms: Mapped[int] = mapped_column(Integer)
+    sector_times: Mapped[list[int]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    valid: Mapped[bool] = mapped_column(Boolean)
