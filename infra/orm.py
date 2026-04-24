@@ -291,3 +291,24 @@ class TransferLink(Base):
         JSON().with_variant(JSONB(), "postgresql"), default=list
     )
     generated_report_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+
+
+class DriverBenchmarkProfile(Base):
+    __tablename__ = "driver_benchmark_profiles"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    cohort_definition: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    cohort_size: Mapped[int] = mapped_column(Integer)
+    per_track_car_percentiles: Mapped[dict[str, float]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=dict
+    )
+    per_dimension_percentiles: Mapped[dict[str, float]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=dict
+    )
+    archetype: Mapped[str | None] = mapped_column(String(32), nullable=True)
