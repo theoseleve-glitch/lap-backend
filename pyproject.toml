@@ -8,6 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "LAP" }]
 dependencies = [
     "fastapi>=0.115",
+    "lap-schemas",
     "pydantic-settings>=2.0",
     "structlog>=24.0",
     "uvicorn>=0.30",
@@ -15,6 +16,9 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+lap-schemas = { path = "../lap-schemas/python", editable = true }
 
 [dependency-groups]
 dev = [
