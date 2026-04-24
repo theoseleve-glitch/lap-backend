@@ -1,8 +1,10 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 import uuid6
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -40,4 +42,23 @@ class DriverProfile(Base):
     )
     cohort_opt_in: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0"
+    )
+
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    # Stored as JSONB on Postgres (indexable/queryable) and plain JSON on SQLite.
+    manifest: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), default="uploaded", server_default="uploaded"
     )
