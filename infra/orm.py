@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -153,3 +154,42 @@ class WeaknessEpisode(Base):
         JSON().with_variant(JSONB(), "postgresql"), default=list
     )
     library_rule_id: Mapped[str] = mapped_column(String(128))
+
+
+class ActionPrescription(Base):
+    __tablename__ = "action_prescriptions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    weakness_episode_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("weakness_episodes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    priority: Mapped[str] = mapped_column(String(8))
+    due_before_session_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    valid_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(256))
+    rationale: Mapped[str] = mapped_column(Text)
+    drill_template_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    expected_context: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    success_condition: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    status: Mapped[str] = mapped_column(String(16))
+    accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    outcome_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
