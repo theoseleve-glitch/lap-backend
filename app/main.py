@@ -1,11 +1,15 @@
+import uuid
 from collections.abc import Awaitable, Callable
 
+import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.logging import configure_logging, logger
 
 configure_logging()
+
+REQUEST_ID_HEADER = "x-request-id"
 
 app = FastAPI()
 
@@ -30,6 +34,22 @@ async def log_requests(
         path=request.url.path,
         status=response.status_code,
     )
+    return response
+
+
+@app.middleware("http")
+async def attach_request_id(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    incoming = request.headers.get(REQUEST_ID_HEADER)
+    request_id = incoming if incoming else str(uuid.uuid4())
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        structlog.contextvars.clear_contextvars()
+    response.headers[REQUEST_ID_HEADER] = request_id
     return response
 
 
