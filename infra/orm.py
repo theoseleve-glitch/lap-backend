@@ -264,3 +264,30 @@ class DriverProgressSnapshot(Base):
     overall_confidence: Mapped[float] = mapped_column(Float)
     percentile_vs_cohort: Mapped[float | None] = mapped_column(Float, nullable=True)
     generated_by: Mapped[str] = mapped_column(String(64))
+
+
+class TransferLink(Base):
+    __tablename__ = "transfer_links"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str] = mapped_column(String(8))
+    session_pair: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    link_reason: Mapped[str] = mapped_column(String(32))
+    shape_match_score: Mapped[float] = mapped_column(Float)
+    intensity_match_score: Mapped[float] = mapped_column(Float)
+    divergence_points: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    transferred_skills: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    non_transferred_skills: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    generated_report_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
