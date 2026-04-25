@@ -149,6 +149,19 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.PIPELINE,
     ),
+    # T193 — cold-brake deficit. Driver's lap-1 brake distance
+    # divided by their warm-brake reference (later laps in the
+    # same session, or PB).
+    FeatureSpec(
+        name="first_lap_brake_distance_ratio",
+        unit="ratio",
+        description=(
+            "Lap-1 average brake distance divided by the "
+            "driver's warm-brake reference. >1.0 means longer "
+            "than warm; cold brakes typically read 1.10-1.20."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}

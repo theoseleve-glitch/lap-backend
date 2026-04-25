@@ -1,0 +1,37 @@
+id: "br.cold_brakes.first_lap_deficit"
+version: 1
+category: technique
+subcategory: cold_brakes
+difficulty: beginner
+
+detection:
+  signal: first_lap_brake_distance_ratio
+  condition: "first_lap_brake_distance_ratio > 1.10"
+  context:
+    must_have_channels: ["brake", "speed", "lap_number"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 1.10 = low, 1.15 = medium, 1.20 = high"
+
+explanation_template:
+  beginner: "Your lap-1 braking is {{deficit_pct}}% longer than your warm pace. Brakes need a lap to come up to temperature — work them harder on the out-lap and leave more margin into corners on lap 1."
+  intermediate: "First-lap brake-distance deficit of {{deficit_pct}}% — cold brake material. Build pad temperature with deliberate stops on the out-lap; expect (and budget for) the deficit on lap 1."
+  advanced: "Lap-1 brake-distance ratio = {{deficit_pct}}% above warm reference. μ-deficit from cold pad/disc; pre-load pad work in the warm-up lap and treat lap 1 as a thermal-management lap rather than a flying lap."
+
+prescription:
+  drill_template_id: "drill.brake_warmup_outlap"
+  expected_gain_kmh: "0-2"
+  success_condition:
+    metric: "first_lap_brake_distance_ratio"
+    comparison: "lte"
+    target_pct: 1.05
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim brake-temp models vary in fidelity; many simplify to instantaneous warm-up. Real-world cold-brake deficit can be 15-25% on a hard compound, much more pronounced than sim defaults"]
