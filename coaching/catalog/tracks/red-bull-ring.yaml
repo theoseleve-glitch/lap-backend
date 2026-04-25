@@ -1,0 +1,31 @@
+# Red Bull Ring — Grand Prix layout (F1 / DTM venue, Spielberg, Austria).
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: red-bull-ring
+layout_name: grand-prix
+length_m: 4318.0
+master_track_id: 019dcacb-7000-7000-8000-000000000004
+
+start_finish:
+  lat: 47.2197
+  lon: 14.7647
+  heading_deg: 85.0
+
+sector_checkpoints:
+  - distance_m: 1380.0
+    name: "S1 end (after Remus)"
+  - distance_m: 2900.0
+    name: "S2 end (after Würth)"
+
+corner_names:
+  - "T1 - Niki Lauda Kurve"
+  - "T2"
+  - "T3 - Remus"
+  - "T4 - Schlossgold"
+  - "T5"
+  - "T6 - Rauch"
+  - "T7 - Würth"
+  - "T8"
+  - "T9 - Rindt"
+  - "T10 - Red Bull Mobile"
