@@ -127,6 +127,18 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.REFERENCE,
     ),
+    # T191 — lap-to-lap repeatability metric. No reference
+    # benchmark needed; consistency is an absolute property.
+    FeatureSpec(
+        name="brake_pressure_cov_in_sector",
+        unit="ratio",
+        description=(
+            "Coefficient of variation (stdev/mean) of peak "
+            "brake pressure across consecutive laps in a "
+            "sector. Higher = more inconsistent."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}
