@@ -1,4 +1,5 @@
 import base64
+import json
 import time
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any
 import httpx
 import jwt
 import pytest
+import uuid6
 from alembic.config import Config as AlembicConfig
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -94,6 +96,49 @@ def _bearer(keys: dict[str, Any], sub: str, email: str) -> str:
     )
 
 
+def _valid_manifest_json() -> str:
+    """Smallest manifest that validates against SessionManifest. Used by
+    T096 smoke tests that need a valid body now that T097 enforces parsing."""
+    return json.dumps(
+        {
+            "session_id": str(uuid6.uuid7()),
+            "driver_id": str(uuid6.uuid7()),
+            "bundle_version": "v2",
+            "capture_app": "lap-coach-logger",
+            "capture_app_version": "0.9.0",
+            "device_model": "Desktop",
+            "device_os": "Windows",
+            "device_os_version": "11",
+            "source": "iracing",
+            "sim_title": "iracing",
+            "real_hardware": None,
+            "car_id": str(uuid6.uuid7()),
+            "track_id": str(uuid6.uuid7()),
+            "track_layout": "gp",
+            "environment_tag": "sim_practice",
+            "objective_tag": "drill",
+            "training_block_id": None,
+            "started_at": "2026-04-24T10:00:00Z",
+            "ended_at": "2026-04-24T10:45:00Z",
+            "duration_seconds": 2700.0,
+            "telemetry_checksums": {"samples.bin": "sha256:abc"},
+            "total_samples": 120000,
+            "sample_rate_hz": 60.0,
+            "data_quality": {
+                "score": 95.0,
+                "channel_completeness": 100.0,
+                "sample_gaps_count": 0,
+                "sample_rate_stability": 0.0,
+                "usable_for_overlays": True,
+                "usable_for_long_term_coaching": True,
+            },
+            "sensor_config": {
+                "sensors": [{"name": "irsdk", "sample_rate_hz": 60.0}],
+            },
+        }
+    )
+
+
 def test_ingest_multipart_returns_202(
     configured_app: dict[str, Any],
 ) -> None:
@@ -104,7 +149,7 @@ def test_ingest_multipart_returns_202(
         "/api/v1/sessions/ingest",
         headers={"Authorization": f"Bearer {bearer}"},
         files={"chunk": ("chunk_0.bin", b"\x00" * 16, "application/octet-stream")},
-        data={"manifest": "{}"},
+        data={"manifest": _valid_manifest_json()},
     )
     assert resp.status_code == 202
 
@@ -119,7 +164,7 @@ def test_ingest_returns_status_accepted_in_body(
         "/api/v1/sessions/ingest",
         headers={"Authorization": f"Bearer {bearer}"},
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
-        data={"manifest": "{}"},
+        data={"manifest": _valid_manifest_json()},
     )
     assert resp.status_code == 202
     body = resp.json()
@@ -132,7 +177,7 @@ def test_ingest_without_auth_returns_401() -> None:
     resp = client.post(
         "/api/v1/sessions/ingest",
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
-        data={"manifest": "{}"},
+        data={"manifest": _valid_manifest_json()},
     )
     assert resp.status_code == 401
 
