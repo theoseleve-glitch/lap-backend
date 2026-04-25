@@ -37,6 +37,9 @@ class User(Base):
     subscription_status: Mapped[str] = mapped_column(
         String(32), default="inactive", server_default="inactive"
     )
+    stripe_customer_id: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, nullable=True
+    )
     is_admin: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0"
     )

@@ -15,6 +15,7 @@ from lap_schemas.v1 import (
     BillingCheckoutRequest,
     BillingCheckoutResponse,
     BillingPlan,
+    BillingPortalResponse,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,6 +74,24 @@ async def create_checkout_session(
     )
 
 
+@router.get("/portal", response_model=BillingPortalResponse)
+async def create_billing_portal_session(
+    user: Annotated[UserRow, Depends(get_current_user)],
+    cfg: Annotated[Config, Depends(get_config)],
+) -> BillingPortalResponse:
+    if not user.stripe_customer_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="no_stripe_customer",
+        )
+    base = cfg.app_base_url.rstrip("/")
+    portal = stripe.billing_portal.Session.create(
+        customer=user.stripe_customer_id,
+        return_url=f"{base}/billing",
+    )
+    return BillingPortalResponse(url=str(portal.url))
+
+
 async def _set_subscription_status_for_user_id(
     db: AsyncSession,
     raw_user_id: str,
@@ -114,6 +133,27 @@ async def _set_subscription_status_from_metadata(
     if not raw_user_id:
         return
     await _set_subscription_status_for_user_id(db, raw_user_id, new_status)
+
+
+async def _set_user_stripe_customer_id(
+    db: AsyncSession,
+    raw_user_id: str,
+    stripe_customer_id: str,
+) -> None:
+    """Record the user's Stripe customer ID so the billing portal
+    endpoint can resolve it later. No-op if the user_id is malformed
+    or doesn't resolve."""
+    try:
+        user_id = UUID(raw_user_id)
+    except ValueError:
+        return
+    user = (
+        await db.execute(select(UserRow).where(UserRow.id == user_id))
+    ).scalar_one_or_none()
+    if user is None:
+        return
+    user.stripe_customer_id = stripe_customer_id
+    await db.commit()
 
 
 def _user_id_from_invoice(invoice: dict[str, Any]) -> str | None:
@@ -183,9 +223,17 @@ async def receive_stripe_webhook(
     )
     if event_type == "customer.subscription.created":
         sub = event_dict["data"]["object"]
-        await _set_subscription_status_from_metadata(
-            db, sub.get("metadata"), "trialing"
-        )
+        metadata = sub.get("metadata") or {}
+        raw_user_id = metadata.get("user_id")
+        customer_id = sub.get("customer")
+        if raw_user_id:
+            await _set_subscription_status_for_user_id(
+                db, raw_user_id, "trialing"
+            )
+            if customer_id:
+                await _set_user_stripe_customer_id(
+                    db, raw_user_id, str(customer_id)
+                )
     elif event_type == "customer.subscription.updated":
         sub = event_dict["data"]["object"]
         sub_status = sub.get("status")
