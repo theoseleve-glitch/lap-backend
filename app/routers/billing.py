@@ -47,12 +47,15 @@ async def create_checkout_session(
     cfg: Annotated[Config, Depends(get_config)],
 ) -> BillingCheckoutResponse:
     price_id = _resolve_price_id(body.plan, cfg)
+    base = cfg.app_base_url.rstrip("/")
     session = stripe.checkout.Session.create(
         mode="subscription",
         line_items=[{"price": price_id, "quantity": 1}],
         client_reference_id=str(user.id),
         metadata={"user_id": str(user.id)},
         subscription_data={"trial_period_days": 14},
+        success_url=f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/billing/canceled",
     )
     return BillingCheckoutResponse(
         url=str(session.url),

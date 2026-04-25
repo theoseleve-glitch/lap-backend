@@ -14,6 +14,9 @@ class Config(BaseSettings):
     stripe_price_lap_monthly: str = ""
     stripe_price_lap_yearly: str = ""
     stripe_price_waitlist_founder: str = ""
+    # Frontend origin used to build Stripe Checkout success/cancel
+    # redirect URLs and the OAuth/Clerk return URLs.
+    app_base_url: str = "https://app.lap-coach.racing"
     storage_root: str = "./var/blobs"
     r2_bucket: str = ""
     r2_endpoint_url: str = ""
