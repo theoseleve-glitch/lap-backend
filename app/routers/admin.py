@@ -5,17 +5,20 @@ diagnose drift, force-sync from Stripe, manually trigger reconciles.
 Not exposed to regular users.
 """
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
 from app.logging import logger
+from infra.orm import DriverProfile as DriverProfileRow
+from infra.orm import Session as SessionRow
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -114,4 +117,91 @@ async def refund_charge(
         "refund_id": refund_id,
         "status": refund_status,
         "amount": refund_amount,
+    }
+
+
+# T178 — operator KPI dashboard. The full ADR definitions need
+# PostHog event joins (e.g., "viewed coaching surface"); this is
+# the local-DB approximation good enough for an at-a-glance view.
+_KPI_WINDOW = timedelta(days=7)
+_PAID_STATUSES = ("active", "trialing")
+_READY_SESSION_STATUS = "ready"
+
+
+@router.get("/kpis")
+async def admin_kpis(
+    caller: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """Returns the three glance-able KPIs over the last 7 days:
+    WPD (paid users with at least one session), activation rate
+    (signups that uploaded a session), and upload success rate
+    (ready sessions / total)."""
+    _require_admin(caller)
+    threshold = datetime.now(UTC) - _KPI_WINDOW
+
+    wpd = (
+        await db.execute(
+            select(func.count(func.distinct(UserRow.id)))
+            .join(
+                DriverProfileRow,
+                DriverProfileRow.user_id == UserRow.id,
+            )
+            .join(
+                SessionRow,
+                SessionRow.driver_id == DriverProfileRow.id,
+            )
+            .where(UserRow.subscription_status.in_(_PAID_STATUSES))
+            .where(SessionRow.created_at >= threshold)
+        )
+    ).scalar_one()
+
+    total_signups = (
+        await db.execute(
+            select(func.count(UserRow.id)).where(
+                UserRow.created_at >= threshold
+            )
+        )
+    ).scalar_one()
+    activated_signups = (
+        await db.execute(
+            select(func.count(func.distinct(UserRow.id)))
+            .join(
+                DriverProfileRow,
+                DriverProfileRow.user_id == UserRow.id,
+            )
+            .join(
+                SessionRow,
+                SessionRow.driver_id == DriverProfileRow.id,
+            )
+            .where(UserRow.created_at >= threshold)
+        )
+    ).scalar_one()
+    activation_rate = (
+        activated_signups / total_signups if total_signups > 0 else 0.0
+    )
+
+    total_sessions = (
+        await db.execute(
+            select(func.count(SessionRow.id)).where(
+                SessionRow.created_at >= threshold
+            )
+        )
+    ).scalar_one()
+    ready_sessions = (
+        await db.execute(
+            select(func.count(SessionRow.id))
+            .where(SessionRow.created_at >= threshold)
+            .where(SessionRow.status == _READY_SESSION_STATUS)
+        )
+    ).scalar_one()
+    upload_success_rate = (
+        ready_sessions / total_sessions if total_sessions > 0 else 1.0
+    )
+
+    return {
+        "wpd": int(wpd),
+        "activation_rate": float(activation_rate),
+        "upload_success_rate": float(upload_success_rate),
+        "computed_at": datetime.now(UTC).isoformat(),
     }
