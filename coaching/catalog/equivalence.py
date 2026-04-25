@@ -16,12 +16,17 @@ from typing import Any
 import yaml
 
 from coaching.catalog.loader import (
+    DEFAULT_CARS_DIR,
     TrackCatalogParseError,
     get_track_catalog,
+    load_car_yaml,
 )
 
 DEFAULT_EQUIVALENCE_YAML = (
     Path(__file__).resolve().parent / "sim_track_equivalence.yaml"
+)
+DEFAULT_CAR_EQUIVALENCE_YAML = (
+    Path(__file__).resolve().parent / "sim_car_equivalence.yaml"
 )
 
 
@@ -96,4 +101,86 @@ def lookup_master_track_id(
     or `None` if no mapping is registered."""
     return get_sim_track_equivalence().get(
         SimTrackKey(provider=provider, sim_track_id=sim_track_id)
+    )
+
+
+# --- Car equivalence (T139 / ADR-014) ------------------------------
+
+
+@dataclass(frozen=True)
+class SimCarKey:
+    provider: str
+    sim_car_id: str
+
+
+def _all_master_car_ids() -> set[str]:
+    return {
+        load_car_yaml(p).master_car_id
+        for p in DEFAULT_CARS_DIR.glob("*.yaml")
+    }
+
+
+def load_sim_car_equivalence(
+    path: Path,
+    *,
+    validate_against_catalog: bool = False,
+) -> dict[SimCarKey, str]:
+    """Read the car equivalence YAML into a dict keyed by
+    `(provider, sim_car_id)` → `master_car_id`.
+
+    When `validate_against_catalog` is True, every value must
+    correspond to a real car catalog entry.
+    """
+    with path.open(encoding="utf-8") as f:
+        data: Any = yaml.safe_load(f)
+
+    if not isinstance(data, dict) or "pairs" not in data:
+        raise TrackCatalogParseError(
+            "expected_top_level_dict_with_pairs"
+        )
+
+    table: dict[SimCarKey, str] = {}
+    for entry in data["pairs"]:
+        key = SimCarKey(
+            provider=str(entry["provider"]),
+            sim_car_id=str(entry["sim_car_id"]),
+        )
+        master_id = str(entry["master_car_id"])
+        if key in table:
+            raise TrackCatalogParseError(
+                f"duplicate_sim_car_key: {key}"
+            )
+        table[key] = master_id
+
+    if validate_against_catalog:
+        known = _all_master_car_ids()
+        for key, master_id in table.items():
+            if master_id not in known:
+                raise TrackCatalogParseError(
+                    f"unknown_master_car_id: {master_id} "
+                    f"referenced by {key}"
+                )
+
+    return table
+
+
+@lru_cache(maxsize=1)
+def get_sim_car_equivalence() -> dict[SimCarKey, str]:
+    """Production accessor: lazy-loaded, cached. Validates against
+    the car catalog on first call."""
+    return load_sim_car_equivalence(
+        DEFAULT_CAR_EQUIVALENCE_YAML,
+        validate_against_catalog=True,
+    )
+
+
+def lookup_master_car_id(
+    *,
+    provider: str,
+    sim_car_id: str,
+) -> str | None:
+    """Resolve a sim-specific car identifier to a `master_car_id`,
+    or `None` if no mapping is registered."""
+    return get_sim_car_equivalence().get(
+        SimCarKey(provider=provider, sim_car_id=sim_car_id)
     )

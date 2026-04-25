@@ -1,0 +1,84 @@
+# Sim↔real car equivalence table (ADR-014, T139).
+#
+# Maps sim-specific car identifiers (iRacing car_id, ACC car slug,
+# AC mod folder name…) to the canonical `master_car_id` defined by
+# the YAMLs in `coaching/catalog/cars/`. Same physical car,
+# multiple sim representations, one master id.
+#
+# Provider conventions:
+#   iracing - iRacing internal car_id (integer, stringified)
+#   acc     - ACC car-name slug (e.g. "porsche_991ii_gt3_r")
+#   ac      - Assetto Corsa folder name under `content/cars/`
+#   real    - real-world capture (rare; usually inferred)
+#
+# Seed values are illustrative — sim_car_ids will be refined as
+# canonical sources (iRacing data export, ACC SDK) become available.
+
+pairs:
+  # Porsche 911 GT3 R — three sim representations of one real car.
+  - provider: iracing
+    sim_car_id: "64"
+    master_car_id: 019dcacb-7000-7000-8000-100000000001
+  - provider: acc
+    sim_car_id: porsche_991ii_gt3_r
+    master_car_id: 019dcacb-7000-7000-8000-100000000001
+  - provider: ac
+    sim_car_id: ks_porsche_911_gt3_r_2019
+    master_car_id: 019dcacb-7000-7000-8000-100000000001
+
+  # Mercedes-AMG GT3 Evo
+  - provider: iracing
+    sim_car_id: "33"
+    master_car_id: 019dcacb-7000-7000-8000-100000000002
+  - provider: acc
+    sim_car_id: mercedes_amg_gt3_evo
+    master_car_id: 019dcacb-7000-7000-8000-100000000002
+
+  # BMW M4 GT3
+  - provider: iracing
+    sim_car_id: "144"
+    master_car_id: 019dcacb-7000-7000-8000-100000000003
+  - provider: acc
+    sim_car_id: bmw_m4_gt3
+    master_car_id: 019dcacb-7000-7000-8000-100000000003
+
+  # Audi R8 LMS Evo II
+  - provider: iracing
+    sim_car_id: "95"
+    master_car_id: 019dcacb-7000-7000-8000-100000000004
+
+  # Ferrari 296 GT3
+  - provider: iracing
+    sim_car_id: "70"
+    master_car_id: 019dcacb-7000-7000-8000-100000000005
+  - provider: acc
+    sim_car_id: ferrari_296_gt3
+    master_car_id: 019dcacb-7000-7000-8000-100000000005
+
+  # Lamborghini Huracan GT3 Evo2
+  - provider: iracing
+    sim_car_id: "51"
+    master_car_id: 019dcacb-7000-7000-8000-100000000006
+  - provider: acc
+    sim_car_id: lamborghini_huracan_gt3_evo2
+    master_car_id: 019dcacb-7000-7000-8000-100000000006
+
+  # McLaren 720S GT3 Evo
+  - provider: iracing
+    sim_car_id: "28"
+    master_car_id: 019dcacb-7000-7000-8000-100000000007
+
+  # Ford Mustang GT3
+  - provider: iracing
+    sim_car_id: "137"
+    master_car_id: 019dcacb-7000-7000-8000-10000000000c
+
+  # Corvette Z06 GT3.R
+  - provider: iracing
+    sim_car_id: "89"
+    master_car_id: 019dcacb-7000-7000-8000-10000000000f
+
+  # IAME X30 Senior — one karting class anchored
+  - provider: iracing
+    sim_car_id: "12"
+    master_car_id: 019dcacb-7000-7000-8000-100000000012
