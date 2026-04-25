@@ -13,6 +13,7 @@ from app.rate_limit import rate_limit_middleware
 from app.routers import admin as admin_router
 from app.routers import billing as billing_router
 from app.routers import catalog as catalog_router
+from app.routers import coaching as coaching_router
 from app.routers import devices as devices_router
 from app.routers import jobs as jobs_router
 from app.routers import me as me_router
@@ -73,6 +74,7 @@ async def attach_request_id(
 app.include_router(admin_router.router)
 app.include_router(billing_router.router)
 app.include_router(catalog_router.router)
+app.include_router(coaching_router.router)
 app.include_router(devices_router.router)
 app.include_router(jobs_router.router)
 app.include_router(me_router.router)
