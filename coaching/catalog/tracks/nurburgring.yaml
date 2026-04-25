@@ -1,0 +1,54 @@
+# Nürburgring — VLN Gesamtstrecke (combined Grand-Prix-Strecke +
+# Nordschleife layout used by VLN / NLS endurance racing).
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: nurburgring
+layout_name: vln-gesamtstrecke
+length_m: 25378.0
+master_track_id: 019dcacb-7000-7000-8000-000000000003
+
+start_finish:
+  lat: 50.3354
+  lon: 6.9474
+  heading_deg: 270.0
+
+sector_checkpoints:
+  - distance_m: 5100.0
+    name: "S1 end (GP-Strecke → Nordschleife transition)"
+  - distance_m: 16000.0
+    name: "S2 end (mid-Nordschleife, near Karussell)"
+
+corner_names:
+  # Grand-Prix-Strecke section
+  - "T1 - Mercedes-Arena"
+  - "T2 - Castrol-S"
+  - "T3 - Müllenbach"
+  - "T4 - Yokohama-S"
+  - "T5 - Bit-Kurve"
+  - "T6 - Veedol-Schikane"
+  - "T7 - NGK-Schikane"
+  # Nordschleife section
+  - "Hatzenbach"
+  - "Hocheichen"
+  - "Flugplatz"
+  - "Schwedenkreuz"
+  - "Aremberg"
+  - "Fuchsröhre"
+  - "Adenauer Forst"
+  - "Metzgesfeld"
+  - "Kallenhard"
+  - "Wehrseifen"
+  - "Breidscheid"
+  - "Bergwerk"
+  - "Kesselchen"
+  - "Klostertal"
+  - "Karussell"
+  - "Hohe Acht"
+  - "Wippermann"
+  - "Brünnchen"
+  - "Pflanzgarten"
+  - "Schwalbenschwanz"
+  - "Galgenkopf"
+  - "Tiergarten"
+  - "Hohenrain-Schikane"
