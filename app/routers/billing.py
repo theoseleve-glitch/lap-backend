@@ -33,6 +33,25 @@ from infra.orm import User as UserRow
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 
+def _resolve_waitlist_promo_id(cfg: Config) -> str | None:
+    """Translate the human-readable promotion code stored in
+    `cfg.stripe_promo_code_waitlist_founder` into the Stripe
+    promotion-code object ID required by `discounts[].promotion_code`.
+    Returns None if the code is unset or no live match exists —
+    checkout proceeds without a discount rather than 5xx-ing on a
+    misconfigured cohort gift."""
+    code = cfg.stripe_promo_code_waitlist_founder.strip()
+    if not code:
+        return None
+    matches = stripe.PromotionCode.list(
+        code=code, active=True, limit=1
+    )
+    if not matches.data:
+        logger.info("waitlist_promo_code_not_found", code=code)
+        return None
+    return str(matches.data[0].id)
+
+
 def _resolve_price_id(plan: BillingPlan, cfg: Config) -> str:
     mapping: dict[BillingPlan, str] = {
         "lap_monthly": cfg.stripe_price_lap_monthly,
@@ -59,15 +78,24 @@ async def create_checkout_session(
 ) -> BillingCheckoutResponse:
     price_id = _resolve_price_id(body.plan, cfg)
     base = cfg.app_base_url.rstrip("/")
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        line_items=[{"price": price_id, "quantity": 1}],
-        client_reference_id=str(user.id),
-        metadata={"user_id": str(user.id)},
-        subscription_data={"trial_period_days": 14},
-        success_url=f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{base}/billing/canceled",
-    )
+
+    create_kwargs: dict[str, Any] = {
+        "mode": "subscription",
+        "line_items": [{"price": price_id, "quantity": 1}],
+        "client_reference_id": str(user.id),
+        "metadata": {"user_id": str(user.id)},
+        "subscription_data": {"trial_period_days": 14},
+        "success_url": (
+            f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}"
+        ),
+        "cancel_url": f"{base}/billing/canceled",
+    }
+    if user.is_waitlist:
+        promo_id = _resolve_waitlist_promo_id(cfg)
+        if promo_id is not None:
+            create_kwargs["discounts"] = [{"promotion_code": promo_id}]
+
+    session = stripe.checkout.Session.create(**create_kwargs)
     return BillingCheckoutResponse(
         url=str(session.url),
         session_id=str(session.id),
