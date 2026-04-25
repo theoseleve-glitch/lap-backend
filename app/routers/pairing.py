@@ -1,7 +1,12 @@
+import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
-from lap_schemas.v1 import PairingCreateResponse
+from fastapi import APIRouter, Depends, HTTPException, status
+from lap_schemas.v1 import (
+    PairingCreateResponse,
+    PairingRedeemRequest,
+    PairingRedeemResponse,
+)
 
 from app.deps import get_current_user, get_pairing_store
 from infra.orm import User as UserRow
@@ -17,3 +22,18 @@ async def create_pairing(
 ) -> PairingCreateResponse:
     token = store.create(user.id)
     return PairingCreateResponse(pairing_token=token)
+
+
+@router.post("/redeem", response_model=PairingRedeemResponse)
+async def redeem_pairing(
+    payload: PairingRedeemRequest,
+    store: Annotated[PairingStore, Depends(get_pairing_store)],
+) -> PairingRedeemResponse:
+    user_id = store.consume(payload.pairing_token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid_pairing_token",
+        )
+    refresh_token = secrets.token_urlsafe(32)
+    return PairingRedeemResponse(refresh_token=refresh_token)
