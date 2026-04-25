@@ -109,3 +109,17 @@ async def list_cars(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/cars/{master_car_id}",
+    response_model=CarCatalogPublic,
+)
+async def get_car(master_car_id: str) -> CarCatalogPublic:
+    entry = get_car_catalog().get(master_car_id)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="car_not_found",
+        )
+    return _car_to_public(entry)
