@@ -24,6 +24,7 @@ from app.deps import (
     get_current_user,
     get_db,
     get_idempotency_cache,
+    get_posthog_client,
     get_task_dispatcher,
 )
 from domain.checksum_validator import (
@@ -35,6 +36,7 @@ from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
+from infra.posthog import PosthogClientProtocol
 from infra.storage import BlobStoreProtocol
 from infra.task_dispatcher import TaskDispatcherProtocol
 
@@ -55,6 +57,9 @@ async def ingest_session(
     task_dispatcher: Annotated[
         TaskDispatcherProtocol, Depends(get_task_dispatcher)
     ],
+    posthog_client: Annotated[
+        PosthogClientProtocol, Depends(get_posthog_client)
+    ],
     chunks: Annotated[list[UploadFile] | None, File()] = None,
     idempotency_key: Annotated[
         str | None, Header(alias="idempotency-key")
@@ -67,7 +72,6 @@ async def ingest_session(
     # T100: persist each chunk to the configured blob store under
     # `{session_id}/{filename}`. Path traversal in chunk filenames is
     # rejected with 400 at the boundary.
-    _ = user
     if idempotency_key is None or not idempotency_key.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -154,6 +158,19 @@ async def ingest_session(
     # T103: queue downstream processing. Dispatcher is abstracted so
     # T107 can swap to a real Celery backend without touching callers.
     job_id = task_dispatcher.dispatch_session_ingest(session_id)
+
+    # T170: emit `session_ingested` to PostHog after dispatch — fire
+    # and forget; analytics never blocks ingestion. The client is a
+    # no-op stand-in in dev/CI (no network, no events stored).
+    posthog_client.capture(
+        event="session_ingested",
+        distinct_id=str(user.id),
+        properties={
+            "session_id": str(session_id),
+            "source": parsed_manifest.source,
+            "environment_tag": parsed_manifest.environment_tag,
+        },
+    )
 
     # T104: response carries the session id, the dispatcher's job id,
     # and the SSE stream URL the client subscribes to for progress.

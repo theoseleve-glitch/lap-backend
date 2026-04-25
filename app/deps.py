@@ -19,6 +19,7 @@ from infra.idempotency_cache import IdempotencyCache
 from infra.job_event_bus import InMemoryJobEventBus, JobEventBusProtocol
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
+from infra.posthog import PosthogClientProtocol, make_posthog_client
 from infra.storage import BlobStoreProtocol, LocalBlobStore, R2BlobStore
 from infra.task_dispatcher import InMemoryTaskDispatcher, TaskDispatcherProtocol
 
@@ -83,6 +84,17 @@ def get_job_event_bus() -> JobEventBusProtocol:
     # implementation will satisfy the same protocol later so the SSE
     # endpoint stays unchanged.
     return InMemoryJobEventBus()
+
+
+@lru_cache
+def get_posthog_client() -> PosthogClientProtocol:
+    # T169 — empty key in dev/CI returns a no-op stand-in; deploys
+    # with POSTHOG_PROJECT_API_KEY get a real client.
+    cfg = get_config()
+    return make_posthog_client(
+        project_api_key=cfg.posthog_project_api_key,
+        host=cfg.posthog_host,
+    )
 
 
 _UNAUTHORIZED = HTTPException(
