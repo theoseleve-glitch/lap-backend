@@ -13,6 +13,7 @@ dependencies = [
     "lap-schemas",
     "pydantic-settings>=2.0",
     "pyjwt[crypto]>=2.9",
+    "python-multipart>=0.0.20",
     "redis>=5.0",
     "sqlalchemy[asyncio]>=2.0",
     "structlog>=24.0",
