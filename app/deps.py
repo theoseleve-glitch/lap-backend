@@ -14,6 +14,7 @@ from app.config import Config
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
 from infra.idempotency_cache import IdempotencyCache
+from infra.job_event_bus import InMemoryJobEventBus, JobEventBusProtocol
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
 from infra.storage import BlobStoreProtocol, LocalBlobStore, R2BlobStore
@@ -72,6 +73,14 @@ def get_task_dispatcher() -> TaskDispatcherProtocol:
     # T103: in-memory placeholder; T107 swaps to a Celery-backed
     # dispatcher behind the same protocol.
     return InMemoryTaskDispatcher()
+
+
+@lru_cache
+def get_job_event_bus() -> JobEventBusProtocol:
+    # T113: in-memory bus, single-process. A Redis-pub/sub-backed
+    # implementation will satisfy the same protocol later so the SSE
+    # endpoint stays unchanged.
+    return InMemoryJobEventBus()
 
 
 _UNAUTHORIZED = HTTPException(
