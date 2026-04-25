@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.logging import configure_logging, logger
 from app.rate_limit import rate_limit_middleware
 from app.routers import me as me_router
+from app.routers import pairing as pairing_router
 from app.routers import webhooks as webhooks_router
 
 configure_logging()
@@ -60,6 +61,7 @@ async def attach_request_id(
 
 
 app.include_router(me_router.router)
+app.include_router(pairing_router.router)
 app.include_router(webhooks_router.router)
 
 

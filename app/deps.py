@@ -12,6 +12,7 @@ from app.config import Config
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
 from infra.orm import User
+from infra.pairing_store import PairingStore
 
 
 @lru_cache
@@ -34,6 +35,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 @lru_cache
 def get_jwks_client() -> ClerkJwksClient:
     return ClerkJwksClient(get_config().clerk_issuer)
+
+
+@lru_cache
+def get_pairing_store() -> PairingStore:
+    return PairingStore()
 
 
 _UNAUTHORIZED = HTTPException(
