@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
@@ -11,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Config
+from domain.billing import is_in_grace_period
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
 from infra.idempotency_cache import IdempotencyCache
@@ -178,6 +180,12 @@ _PAYMENT_REQUIRED = HTTPException(
 async def require_active_subscription(
     user: Annotated[User, Depends(get_current_user)],
 ) -> User:
-    if user.subscription_status not in _ACTIVE_SUBSCRIPTION_STATUSES:
-        raise _PAYMENT_REQUIRED
-    return user
+    if user.subscription_status in _ACTIVE_SUBSCRIPTION_STATUSES:
+        return user
+    if is_in_grace_period(
+        user.subscription_status,
+        user.trial_ended_at,
+        datetime.now(UTC),
+    ):
+        return user
+    raise _PAYMENT_REQUIRED

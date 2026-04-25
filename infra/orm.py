@@ -46,6 +46,9 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0"
     )
+    trial_ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class DriverProfile(Base):

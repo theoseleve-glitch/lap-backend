@@ -9,6 +9,7 @@ soft-block grace period belongs to T163, not this dep.
 import base64
 import time
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -101,7 +102,11 @@ def _make_app(db_url: str, jwks_payload: dict[str, Any]) -> FastAPI:
 
 
 async def _seed_user_with_status(
-    db_url: str, sub: str, email: str, status: str
+    db_url: str,
+    sub: str,
+    email: str,
+    status: str,
+    trial_ended_at: datetime | None = None,
 ) -> None:
     engine = make_engine(db_url)
     factory = make_session_factory(engine)
@@ -113,6 +118,7 @@ async def _seed_user_with_status(
                     clerk_user_id=sub,
                     email=email,
                     subscription_status=status,
+                    trial_ended_at=trial_ended_at,
                 )
             )
             await session.commit()
@@ -221,3 +227,94 @@ def test_missing_auth_returns_401(upgraded_db_url: str) -> None:
     client = TestClient(_make_app(upgraded_db_url, keys["jwks"]))
     resp = client.get("/paid-only")
     assert resp.status_code == 401
+
+
+# T163 — grace period: trial-expired users get 48h of soft access
+# before the gate hard-blocks them. The dep consults trial_ended_at
+# to decide whether to let a non-active subscription through.
+
+
+async def test_past_due_within_grace_window_passes_through(
+    upgraded_db_url: str,
+) -> None:
+    keys = _build_keypair()
+    ended_recently = datetime.now(UTC) - timedelta(hours=1)
+    await _seed_user_with_status(
+        upgraded_db_url,
+        "user_grace",
+        "grace@test",
+        "past_due",
+        trial_ended_at=ended_recently,
+    )
+    now = int(time.time())
+    token = _sign(
+        keys["priv_pem"],
+        {"sub": "user_grace", "email": "grace@test", "exp": now + 3600},
+        keys["kid"],
+    )
+    client = TestClient(_make_app(upgraded_db_url, keys["jwks"]))
+    resp = client.get(
+        "/paid-only", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 200
+
+
+async def test_past_due_after_grace_expires_returns_402(
+    upgraded_db_url: str,
+) -> None:
+    # 49h since trial ended → past the 48h soft-block window.
+    keys = _build_keypair()
+    ended_long_ago = datetime.now(UTC) - timedelta(hours=49)
+    await _seed_user_with_status(
+        upgraded_db_url,
+        "user_no_grace",
+        "no_grace@test",
+        "past_due",
+        trial_ended_at=ended_long_ago,
+    )
+    now = int(time.time())
+    token = _sign(
+        keys["priv_pem"],
+        {
+            "sub": "user_no_grace",
+            "email": "no_grace@test",
+            "exp": now + 3600,
+        },
+        keys["kid"],
+    )
+    client = TestClient(_make_app(upgraded_db_url, keys["jwks"]))
+    resp = client.get(
+        "/paid-only", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 402
+
+
+async def test_canceled_within_grace_window_passes_through(
+    upgraded_db_url: str,
+) -> None:
+    # Trial ended without a payment method → status=canceled,
+    # but they still get 48h to come back.
+    keys = _build_keypair()
+    ended_recently = datetime.now(UTC) - timedelta(hours=10)
+    await _seed_user_with_status(
+        upgraded_db_url,
+        "user_cancel_grace",
+        "cancel_grace@test",
+        "canceled",
+        trial_ended_at=ended_recently,
+    )
+    now = int(time.time())
+    token = _sign(
+        keys["priv_pem"],
+        {
+            "sub": "user_cancel_grace",
+            "email": "cancel_grace@test",
+            "exp": now + 3600,
+        },
+        keys["kid"],
+    )
+    client = TestClient(_make_app(upgraded_db_url, keys["jwks"]))
+    resp = client.get(
+        "/paid-only", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 200
