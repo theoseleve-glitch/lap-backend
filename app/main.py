@@ -1,3 +1,4 @@
+import os
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -17,8 +18,10 @@ from app.routers import me as me_router
 from app.routers import pairing as pairing_router
 from app.routers import sessions as sessions_router
 from app.routers import webhooks as webhooks_router
+from infra.sentry import configure_sentry
 
 configure_logging()
+configure_sentry(os.getenv("SENTRY_DSN", ""))
 
 REQUEST_ID_HEADER = "x-request-id"
 

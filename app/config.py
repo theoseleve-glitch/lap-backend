@@ -23,6 +23,9 @@ class Config(BaseSettings):
     # redirect URLs and the OAuth/Clerk return URLs.
     app_base_url: str = "https://app.lap-coach.racing"
     storage_root: str = "./var/blobs"
+    # Sentry DSN. Empty in dev/CI so we don't beacon out; deploys set
+    # via SENTRY_DSN env var. T166 introduced the SDK wire-up.
+    sentry_dsn: str = ""
     r2_bucket: str = ""
     r2_endpoint_url: str = ""
     r2_access_key_id: SecretStr = SecretStr("")
