@@ -154,4 +154,11 @@ async def receive_stripe_webhook(
         await _set_subscription_status_from_metadata(
             db, sub.get("metadata"), "trialing"
         )
+    elif event_type == "customer.subscription.updated":
+        sub = event_dict["data"]["object"]
+        sub_status = sub.get("status")
+        if sub_status:
+            await _set_subscription_status_from_metadata(
+                db, sub.get("metadata"), sub_status
+            )
     return {"status": "received"}
