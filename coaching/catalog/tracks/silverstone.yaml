@@ -1,0 +1,36 @@
+# Silverstone Circuit — Grand Prix layout (F1 / WEC variant).
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: silverstone
+layout_name: grand-prix
+length_m: 5891.0
+master_track_id: 019dcacb-7000-7000-8000-000000000002
+
+start_finish:
+  lat: 52.0786
+  lon: -1.0169
+  heading_deg: 145.0
+
+sector_checkpoints:
+  - distance_m: 1740.0
+    name: "S1 end (after Abbey complex)"
+  - distance_m: 3680.0
+    name: "S2 end (after Stowe)"
+
+corner_names:
+  - "T1 - Abbey"
+  - "T2 - Farm Curve"
+  - "T3 - Village"
+  - "T4 - The Loop"
+  - "T5 - Aintree"
+  - "T6 - Brooklands"
+  - "T7 - Luffield"
+  - "T8 - Woodcote"
+  - "T9 - Copse"
+  - "T10 - Maggotts"
+  - "T11 - Becketts"
+  - "T12 - Chapel"
+  - "T13 - Stowe"
+  - "T14 - Vale"
+  - "T15 - Club"
