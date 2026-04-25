@@ -17,6 +17,7 @@ import yaml
 
 from coaching.catalog.loader import (
     DEFAULT_CARS_DIR,
+    TrackCatalogEntry,
     TrackCatalogParseError,
     get_track_catalog,
     load_car_yaml,
@@ -102,6 +103,33 @@ def lookup_master_track_id(
     return get_sim_track_equivalence().get(
         SimTrackKey(provider=provider, sim_track_id=sim_track_id)
     )
+
+
+def resolve_track_for_sim(
+    *,
+    provider: str,
+    sim_track_id: str,
+) -> TrackCatalogEntry | None:
+    """Compose `lookup_master_track_id` + `get_track_catalog` to
+    return the full `TrackCatalogEntry` for a sim-specific track
+    identifier, or `None` if either layer doesn't resolve."""
+    master_id = lookup_master_track_id(
+        provider=provider, sim_track_id=sim_track_id
+    )
+    if master_id is None:
+        return None
+    return get_track_catalog().get(master_id)
+
+
+def resolve_track_by_name(name: str) -> TrackCatalogEntry | None:
+    """Look up a `TrackCatalogEntry` by its human-readable name
+    (kebab-case slug, e.g. ``"silverstone"`` or ``"red-bull-ring"``).
+    Returns the first match or `None`. Useful for admin tooling
+    and tests where opaque master_track_ids are awkward."""
+    for entry in get_track_catalog().values():
+        if entry.name == name:
+            return entry
+    return None
 
 
 # --- Car equivalence (T139 / ADR-014) ------------------------------
