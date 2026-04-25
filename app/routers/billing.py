@@ -22,6 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Config
 from app.deps import get_config, get_current_user, get_db
 from app.logging import logger
+from infra.notifications import (
+    Notification,
+    NotificationQueue,
+    get_notification_queue,
+)
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
@@ -68,35 +73,61 @@ async def create_checkout_session(
     )
 
 
-async def _set_subscription_status_from_metadata(
+async def _set_subscription_status_for_user_id(
     db: AsyncSession,
-    metadata: dict[str, str] | None,
+    raw_user_id: str,
     new_status: str,
-) -> None:
-    """Look up a `User` by `metadata.user_id` and write the new
-    subscription_status. No-op if the user_id is missing or
-    doesn't exist locally — Stripe events for users we never knew
-    about must not 5xx, otherwise Stripe retries indefinitely."""
-    if not metadata:
-        return
-    raw_user_id = metadata.get("user_id")
-    if not raw_user_id:
-        return
+) -> bool:
+    """Look up a `User` by id-string and write the new
+    subscription_status. Returns True if the user was found and
+    the write happened, False otherwise. No-op (False) for missing
+    or malformed user_ids — Stripe events for ghost users must not
+    5xx, otherwise Stripe retries indefinitely."""
     try:
         user_id = UUID(raw_user_id)
     except ValueError:
         logger.warning(
             "stripe_webhook_user_id_not_uuid", raw_user_id=raw_user_id
         )
-        return
+        return False
     user = (
         await db.execute(select(UserRow).where(UserRow.id == user_id))
     ).scalar_one_or_none()
     if user is None:
         logger.info("stripe_webhook_user_not_found", user_id=raw_user_id)
-        return
+        return False
     user.subscription_status = new_status
     await db.commit()
+    return True
+
+
+async def _set_subscription_status_from_metadata(
+    db: AsyncSession,
+    metadata: dict[str, str] | None,
+    new_status: str,
+) -> None:
+    """Convenience wrapper: extract `user_id` from a Stripe
+    metadata dict and apply the status update."""
+    if not metadata:
+        return
+    raw_user_id = metadata.get("user_id")
+    if not raw_user_id:
+        return
+    await _set_subscription_status_for_user_id(db, raw_user_id, new_status)
+
+
+def _user_id_from_invoice(invoice: dict[str, Any]) -> str | None:
+    """Pull `user_id` out of the various Stripe invoice metadata
+    locations — `subscription_details.metadata` (current API) or
+    plain `metadata` (older / explicitly-set)."""
+    sub_details = invoice.get("subscription_details") or {}
+    sub_md = sub_details.get("metadata") or {}
+    if "user_id" in sub_md:
+        return str(sub_md["user_id"])
+    md = invoice.get("metadata") or {}
+    if "user_id" in md:
+        return str(md["user_id"])
+    return None
 
 
 @router.post("/webhooks", status_code=status.HTTP_200_OK)
@@ -104,6 +135,7 @@ async def receive_stripe_webhook(
     request: Request,
     cfg: Annotated[Config, Depends(get_config)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    notif_q: Annotated[NotificationQueue, Depends(get_notification_queue)],
     stripe_signature: Annotated[str | None, Header()] = None,
 ) -> dict[str, str]:
     """Stripe webhook receiver. Verifies the `Stripe-Signature`
@@ -166,4 +198,23 @@ async def receive_stripe_webhook(
         await _set_subscription_status_from_metadata(
             db, sub.get("metadata"), "canceled"
         )
+    elif event_type == "invoice.payment_failed":
+        invoice = event_dict["data"]["object"]
+        user_id = _user_id_from_invoice(invoice)
+        if user_id:
+            updated = await _set_subscription_status_for_user_id(
+                db, user_id, "past_due"
+            )
+            if updated:
+                notif_q.enqueue(
+                    Notification(
+                        kind="payment_failed",
+                        user_id=user_id,
+                        payload={
+                            "invoice_id": str(invoice.get("id", "")),
+                            "amount_due": invoice.get("amount_due", 0),
+                            "currency": str(invoice.get("currency", "")),
+                        },
+                    )
+                )
     return {"status": "received"}
