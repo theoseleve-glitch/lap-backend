@@ -8,7 +8,7 @@ and the billing portal (T157).
 from typing import Annotated
 
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from lap_schemas.v1 import (
     BillingCheckoutRequest,
     BillingCheckoutResponse,
@@ -17,6 +17,7 @@ from lap_schemas.v1 import (
 
 from app.config import Config
 from app.deps import get_config, get_current_user
+from app.logging import logger
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
@@ -61,3 +62,47 @@ async def create_checkout_session(
         url=str(session.url),
         session_id=str(session.id),
     )
+
+
+@router.post("/webhooks", status_code=status.HTTP_200_OK)
+async def receive_stripe_webhook(
+    request: Request,
+    cfg: Annotated[Config, Depends(get_config)],
+    stripe_signature: Annotated[str | None, Header()] = None,
+) -> dict[str, str]:
+    """Stripe webhook receiver. Verifies the `Stripe-Signature`
+    header against the raw body and rejects on mismatch. T152+
+    add per-event-type handlers; for now this only validates."""
+    if stripe_signature is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="missing_stripe_signature",
+        )
+    secret = cfg.stripe_webhook_secret.get_secret_value()
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="stripe_webhook_secret_not_configured",
+        )
+    payload = await request.body()
+    try:
+        event = stripe.Webhook.construct_event(  # type: ignore[no-untyped-call]
+            payload=payload,
+            sig_header=stripe_signature,
+            secret=secret,
+        )
+    except (
+        stripe.SignatureVerificationError,
+        ValueError,
+    ) as exc:
+        logger.warning("stripe_webhook_signature_invalid", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid_stripe_signature",
+        ) from exc
+    logger.info(
+        "stripe_webhook_received",
+        event_id=event["id"],
+        event_type=event["type"],
+    )
+    return {"status": "received"}

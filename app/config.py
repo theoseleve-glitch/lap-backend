@@ -9,6 +9,7 @@ class Config(BaseSettings):
     clerk_issuer: str = "https://clerk.example.invalid"
     clerk_webhook_secret: SecretStr = SecretStr("")
     stripe_secret: SecretStr
+    stripe_webhook_secret: SecretStr = SecretStr("")
     # Stripe Price IDs — created in the Stripe dashboard. Empty in
     # dev/test; deploys must set these. T148+ checkout flows read them.
     stripe_price_lap_monthly: str = ""
