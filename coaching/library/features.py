@@ -162,6 +162,18 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.PIPELINE,
     ),
+    # T194 — residual brake at apex. Driver who's still on the
+    # brake at apex isn't trail-braking off, they're scrubbing.
+    FeatureSpec(
+        name="mid_corner_brake_pressure_pct",
+        unit="ratio",
+        description=(
+            "Apex-region brake pressure as a fraction of peak "
+            "entry brake pressure. Should be near 0 at apex; "
+            "values >0.20 mean residual brake is dragging speed."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}
