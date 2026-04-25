@@ -15,6 +15,10 @@ class Config(BaseSettings):
     stripe_price_lap_monthly: str = ""
     stripe_price_lap_yearly: str = ""
     stripe_price_waitlist_founder: str = ""
+    # Stripe promotion code (created in dashboard) for the waitlist
+    # founder cohort: 20% off for 12 months. Default matches the
+    # canonical code; deploys can override per environment.
+    stripe_promo_code_waitlist_founder: str = "WAITLIST_FOUNDER"
     # Frontend origin used to build Stripe Checkout success/cancel
     # redirect URLs and the OAuth/Clerk return URLs.
     app_base_url: str = "https://app.lap-coach.racing"
