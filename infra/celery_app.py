@@ -70,7 +70,11 @@ async def _mark_processing(session_id: UUID) -> None:
 
 
 @celery_app.task(  # type: ignore[untyped-decorator]
-    name="infra.celery_app.process_session_ingest"
+    name="infra.celery_app.process_session_ingest",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=2,
 )
 def process_session_ingest(session_id_str: str) -> str:
     """T109 skeleton: load manifest, mark processing, log.
