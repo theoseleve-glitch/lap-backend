@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -89,11 +90,13 @@ def get_job_event_bus() -> JobEventBusProtocol:
 @lru_cache
 def get_posthog_client() -> PosthogClientProtocol:
     # T169 — empty key in dev/CI returns a no-op stand-in; deploys
-    # with POSTHOG_PROJECT_API_KEY get a real client.
-    cfg = get_config()
+    # with POSTHOG_PROJECT_API_KEY get a real client. Reads from env
+    # directly (not Config) so the dep stays callable even when other
+    # secrets aren't set — important for narrow test fixtures that
+    # don't seed Clerk/Stripe vars.
     return make_posthog_client(
-        project_api_key=cfg.posthog_project_api_key,
-        host=cfg.posthog_host,
+        project_api_key=os.getenv("POSTHOG_PROJECT_API_KEY", ""),
+        host=os.getenv("POSTHOG_HOST", "https://us.i.posthog.com"),
     )
 
 
@@ -148,6 +151,9 @@ async def get_current_claims(
 async def get_current_user(
     claims: Annotated[dict[str, Any], Depends(get_current_claims)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    posthog_client: Annotated[
+        PosthogClientProtocol, Depends(get_posthog_client)
+    ],
 ) -> User:
     sub = claims.get("sub")
     email = claims.get("email")
@@ -163,6 +169,16 @@ async def get_current_user(
     user = User(id=uuid6.uuid7(), clerk_user_id=sub, email=email)
     db.add(user)
     await db.commit()
+    # T174: identify the new user to PostHog. Only fires on the
+    # auto-provision branch — repeat logins return early above and
+    # don't re-write the person profile.
+    posthog_client.set(
+        distinct_id=str(user.id),
+        properties={
+            "email": user.email,
+            "clerk_user_id": user.clerk_user_id,
+        },
+    )
     return user
 
 
