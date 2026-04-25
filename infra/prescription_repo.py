@@ -6,6 +6,7 @@ import uuid6
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from infra.metrics import prescriptions_created_total
 from infra.orm import ActionPrescription
 from infra.posthog import PosthogClientProtocol
 
@@ -70,6 +71,9 @@ class PrescriptionRepo:
         )
         self._db.add(pres)
         await self._db.commit()
+        # T177: bump the Prometheus counter alongside the analytics
+        # event — same trigger, two different observers.
+        prescriptions_created_total.inc()
         # T171: emit `prescription_created` once persisted. Tagged
         # to driver_id so the prescription→outcome funnel joins
         # cleanly against future T172/T173 events.

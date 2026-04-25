@@ -4,6 +4,7 @@ from uuid import UUID
 import uuid6
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from infra.metrics import weakness_episodes_open_total
 from infra.orm import WeaknessEpisode
 from infra.posthog import PosthogClientProtocol
 
@@ -46,6 +47,8 @@ class WeaknessRepo:
         )
         self._db.add(episode)
         await self._db.commit()
+        # T177: bump the open-episodes gauge. Decremented in resolve().
+        weakness_episodes_open_total.inc()
         return episode
 
     async def update_confidence(
@@ -67,6 +70,8 @@ class WeaknessRepo:
         episode.status = "resolved"
         episode.resolved_at = resolved_at
         await self._db.commit()
+        # T177: decrement the open gauge — episode left the open set.
+        weakness_episodes_open_total.dec()
         # T173: emit `weakness_resolved` after the resolution is
         # durable. Closes the funnel started by T171's
         # `prescription_created` for this episode's drill template.
