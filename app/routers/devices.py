@@ -1,6 +1,8 @@
+from datetime import UTC, datetime
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from lap_schemas.v1 import DeviceSession as DeviceSessionSchema
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,3 +30,25 @@ async def list_devices(
     return [
         DeviceSessionSchema(id=r.id, created_at=r.created_at) for r in rows
     ]
+
+
+@router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_device(
+    device_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    row = (
+        await db.execute(
+            select(DeviceSessionRow).where(
+                DeviceSessionRow.id == device_id,
+                DeviceSessionRow.user_id == user.id,
+                DeviceSessionRow.revoked_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    row.revoked_at = datetime.now(UTC)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
