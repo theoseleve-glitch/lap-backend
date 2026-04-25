@@ -217,4 +217,11 @@ async def receive_stripe_webhook(
                         },
                     )
                 )
+    elif event_type == "invoice.payment_succeeded":
+        invoice = event_dict["data"]["object"]
+        user_id = _user_id_from_invoice(invoice)
+        if user_id:
+            await _set_subscription_status_for_user_id(
+                db, user_id, "active"
+            )
     return {"status": "received"}
