@@ -51,6 +51,8 @@ async def create_checkout_session(
         mode="subscription",
         line_items=[{"price": price_id, "quantity": 1}],
         client_reference_id=str(user.id),
+        metadata={"user_id": str(user.id)},
+        subscription_data={"trial_period_days": 14},
     )
     return BillingCheckoutResponse(
         url=str(session.url),
