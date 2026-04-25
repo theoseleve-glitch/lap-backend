@@ -8,7 +8,7 @@ in-memory catalog snapshot loaded at startup by `get_track_catalog`.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from lap_schemas.v1 import (
     SectorCheckpointPublic,
     TrackCatalogList,
@@ -57,3 +57,17 @@ async def list_tracks(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/tracks/{master_track_id}",
+    response_model=TrackCatalogPublic,
+)
+async def get_track(master_track_id: str) -> TrackCatalogPublic:
+    entry = get_track_catalog().get(master_track_id)
+    if entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="track_not_found",
+        )
+    return _to_public(entry)
