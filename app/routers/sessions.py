@@ -1,4 +1,3 @@
-import hashlib
 import json
 from typing import Annotated
 
@@ -23,6 +22,10 @@ from app.deps import (
     get_db,
     get_idempotency_cache,
     get_task_dispatcher,
+)
+from domain.checksum_validator import (
+    ChecksumMismatchError,
+    verify_chunk_checksum,
 )
 from infra.idempotency_cache import IdempotencyCache
 from infra.orm import Session as SessionRow
@@ -107,15 +110,15 @@ async def ingest_session(
                 detail="chunk_filename_invalid",
             )
         payload = await chunk.read()
-        digest_hex = hashlib.sha256(payload).hexdigest()
-        if (
-            filename in expected_checksums
-            and f"sha256:{digest_hex}" != expected_checksums[filename]
-        ):
+        try:
+            digest_hex = verify_chunk_checksum(
+                filename, payload, expected_checksums
+            )
+        except ChecksumMismatchError as exc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="chunk_checksum_mismatch",
-            )
+            ) from exc
         verified.append((filename, payload, digest_hex))
 
     # T102: persist a Session row (status="uploaded") and one
