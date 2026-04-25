@@ -203,3 +203,27 @@ def load_car_yaml(path: Path) -> CarCatalogEntry:
         drive_type=str(data["drive_type"]),
         aspiration=str(data["aspiration"]),
     )
+
+
+def load_car_catalog(cars_dir: Path) -> dict[str, CarCatalogEntry]:
+    """Read every `*.yaml` under `cars_dir` and key them by
+    master_car_id. Raises `TrackCatalogParseError` on duplicate IDs."""
+    catalog: dict[str, CarCatalogEntry] = {}
+    for path in sorted(cars_dir.glob("*.yaml")):
+        entry = load_car_yaml(path)
+        if entry.master_car_id in catalog:
+            existing = catalog[entry.master_car_id]
+            raise TrackCatalogParseError(
+                "duplicate_master_car_id: "
+                f"{entry.master_car_id} used by both "
+                f"{existing.name!r} and {entry.name!r}"
+            )
+        catalog[entry.master_car_id] = entry
+    return catalog
+
+
+@lru_cache(maxsize=1)
+def get_car_catalog() -> dict[str, CarCatalogEntry]:
+    """Production accessor: lazy-loaded, cached for the process
+    lifetime. First call walks `DEFAULT_CARS_DIR`."""
+    return load_car_catalog(DEFAULT_CARS_DIR)

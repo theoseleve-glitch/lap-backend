@@ -10,12 +10,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from lap_schemas.v1 import (
+    CarCatalogList,
+    CarCatalogPublic,
     SectorCheckpointPublic,
     TrackCatalogList,
     TrackCatalogPublic,
 )
 
-from coaching.catalog.loader import TrackCatalogEntry, get_track_catalog
+from coaching.catalog.loader import (
+    CarCatalogEntry,
+    TrackCatalogEntry,
+    get_car_catalog,
+    get_track_catalog,
+)
 
 router = APIRouter(prefix="/api/v1/catalog", tags=["catalog"])
 
@@ -71,3 +78,34 @@ async def get_track(master_track_id: str) -> TrackCatalogPublic:
             detail="track_not_found",
         )
     return _to_public(entry)
+
+
+def _car_to_public(entry: CarCatalogEntry) -> CarCatalogPublic:
+    return CarCatalogPublic(
+        master_car_id=entry.master_car_id,
+        name=entry.name,
+        manufacturer=entry.manufacturer,
+        model=entry.model,
+        year=entry.year,
+        car_class=entry.car_class,
+        mass_kg=entry.mass_kg,
+        power_kw=entry.power_kw,
+        drive_type=entry.drive_type,
+        aspiration=entry.aspiration,
+    )
+
+
+@router.get("/cars", response_model=CarCatalogList)
+async def list_cars(
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> CarCatalogList:
+    catalog = get_car_catalog()
+    ordered = sorted(catalog.values(), key=lambda e: e.master_car_id)
+    page = ordered[offset : offset + limit]
+    return CarCatalogList(
+        items=tuple(_car_to_public(e) for e in page),
+        total=len(ordered),
+        limit=limit,
+        offset=offset,
+    )
