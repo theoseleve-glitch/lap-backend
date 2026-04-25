@@ -3,12 +3,15 @@ from functools import lru_cache
 from typing import Annotated, Any
 
 import jwt
+import uuid6
 from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Config
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
+from infra.orm import User
 
 
 @lru_cache
@@ -40,7 +43,7 @@ _UNAUTHORIZED = HTTPException(
 )
 
 
-async def get_current_user(
+async def get_current_claims(
     authorization: Annotated[str | None, Header()] = None,
     jwks_client: Annotated[
         ClerkJwksClient, Depends(get_jwks_client)
@@ -79,3 +82,24 @@ async def get_current_user(
     except jwt.InvalidTokenError as exc:
         raise _UNAUTHORIZED from exc
     return claims
+
+
+async def get_current_user(
+    claims: Annotated[dict[str, Any], Depends(get_current_claims)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    sub = claims.get("sub")
+    email = claims.get("email")
+    if not sub or not email:
+        raise _UNAUTHORIZED
+
+    existing = (
+        await db.execute(select(User).where(User.clerk_user_id == sub))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    user = User(id=uuid6.uuid7(), clerk_user_id=sub, email=email)
+    db.add(user)
+    await db.commit()
+    return user

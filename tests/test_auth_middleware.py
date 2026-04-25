@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.deps import get_current_user, get_jwks_client
+from app.deps import get_current_claims, get_jwks_client
 from infra.clerk import ClerkJwksClient
 
 
@@ -64,9 +64,9 @@ def _make_app(jwks_payload: dict[str, Any]) -> FastAPI:
 
     @app.get("/me")
     async def me(
-        user: dict[str, Any] = Depends(get_current_user),  # noqa: B008
+        claims: dict[str, Any] = Depends(get_current_claims),  # noqa: B008
     ) -> dict[str, Any]:
-        return user
+        return claims
 
     return app
 
