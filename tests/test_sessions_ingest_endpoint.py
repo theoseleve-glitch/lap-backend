@@ -147,7 +147,10 @@ def test_ingest_multipart_returns_202(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers={
+            "Authorization": f"Bearer {bearer}",
+            "Idempotency-Key": str(uuid6.uuid7()),
+        },
         files={"chunk": ("chunk_0.bin", b"\x00" * 16, "application/octet-stream")},
         data={"manifest": _valid_manifest_json()},
     )
@@ -162,7 +165,10 @@ def test_ingest_returns_status_accepted_in_body(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers={
+            "Authorization": f"Bearer {bearer}",
+            "Idempotency-Key": str(uuid6.uuid7()),
+        },
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         data={"manifest": _valid_manifest_json()},
     )
@@ -185,16 +191,19 @@ def test_ingest_without_auth_returns_401() -> None:
 def test_ingest_accepts_pure_multipart_without_chunk_files(
     configured_app: dict[str, Any],
 ) -> None:
-    # T096 acceptance is "accepts multipart" — at the smoke-test level
-    # we don't enforce specific form fields yet. T097 adds manifest
-    # parsing; for now any multipart body should pass.
+    # T096 acceptance is "accepts multipart" — files are optional in
+    # the multipart body. T097 enforces manifest validity; T098
+    # enforces Idempotency-Key. With both supplied but no chunk
+    # files, the response is the normal 202.
     keys = configured_app["keys"]
     bearer = _bearer(keys, "user_ingest_c", "ic@test")
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
-        data={"foo": "bar"},  # form-urlencoded, technically not multipart
+        headers={
+            "Authorization": f"Bearer {bearer}",
+            "Idempotency-Key": str(uuid6.uuid7()),
+        },
+        data={"manifest": _valid_manifest_json()},
     )
-    # Empty form is fine, so is multipart without files.
-    assert resp.status_code in (202, 422)
+    assert resp.status_code == 202

@@ -136,6 +136,13 @@ def _valid_manifest() -> dict[str, Any]:
     }
 
 
+def _ingest_headers(bearer: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {bearer}",
+        "Idempotency-Key": str(uuid6.uuid7()),
+    }
+
+
 def test_ingest_with_valid_manifest_returns_202(
     configured_app: dict[str, Any],
 ) -> None:
@@ -144,7 +151,7 @@ def test_ingest_with_valid_manifest_returns_202(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers=_ingest_headers(bearer),
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         data={"manifest": json.dumps(_valid_manifest())},
     )
@@ -159,7 +166,7 @@ def test_ingest_with_missing_manifest_field_returns_422(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers=_ingest_headers(bearer),
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         # No manifest field at all.
     )
@@ -174,7 +181,7 @@ def test_ingest_with_malformed_json_manifest_returns_422(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers=_ingest_headers(bearer),
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         data={"manifest": "{not-valid-json"},
     )
@@ -189,7 +196,7 @@ def test_ingest_with_empty_object_manifest_returns_422(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers=_ingest_headers(bearer),
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         data={"manifest": "{}"},
     )
@@ -206,7 +213,7 @@ def test_ingest_with_wrong_field_type_returns_422(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers=_ingest_headers(bearer),
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         data={"manifest": json.dumps(bad)},
     )
@@ -223,7 +230,7 @@ def test_ingest_with_negative_duration_returns_422(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers=_ingest_headers(bearer),
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         data={"manifest": json.dumps(bad)},
     )
@@ -240,7 +247,7 @@ def test_ingest_with_unknown_extra_field_returns_422(
     client = TestClient(app)
     resp = client.post(
         "/api/v1/sessions/ingest",
-        headers={"Authorization": f"Bearer {bearer}"},
+        headers=_ingest_headers(bearer),
         files={"chunk": ("c.bin", b"\x00", "application/octet-stream")},
         data={"manifest": json.dumps(bad)},
     )
