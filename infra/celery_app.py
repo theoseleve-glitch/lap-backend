@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from infra.db import make_engine, make_session_factory
 from infra.orm import Session as SessionRow
+from infra.orm import SessionRecord as SessionRecordRow
 
 logger = structlog.get_logger()
 
@@ -111,6 +112,42 @@ class SessionIngestTask(Task):  # type: ignore[misc]
             )
 
 
+async def _persist_session_record(
+    session_id: UUID, payload: dict[str, Any]
+) -> None:
+    """T122: insert-or-update the SessionRecord row for this session.
+
+    Idempotent: if a row already exists (Celery retry re-enters the
+    task body after a downstream failure), the payload is overwritten
+    rather than tripping the unique session_id constraint. The FK to
+    `sessions.id` is enforced — an unknown session_id raises an
+    integrity error rather than silently creating an orphan row.
+    """
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            existing = (
+                await db.execute(
+                    select(SessionRecordRow).where(
+                        SessionRecordRow.session_id == session_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is None:
+                db.add(
+                    SessionRecordRow(
+                        session_id=session_id, payload=payload
+                    )
+                )
+            else:
+                existing.payload = payload
+            await db.commit()
+    finally:
+        await engine.dispose()
+
+
 async def _mark_processing(session_id: UUID) -> None:
     """Open a worker-local DB session and transition the row.
 
@@ -158,6 +195,15 @@ def process_session_ingest(session_id_str: str) -> str:
     asyncio.run(_mark_processing(session_id))
     logger.info(
         "process_session_ingest.marked_processing",
+        session_id=session_id_str,
+    )
+    # T122: persist a SessionRecord row at the end of processing.
+    # Payload starts empty — T124/T125 integration tests will pin a
+    # richer shape once lap detection / metrics / data quality flow
+    # end-to-end through the worker.
+    asyncio.run(_persist_session_record(session_id, payload={}))
+    logger.info(
+        "process_session_ingest.session_record_persisted",
         session_id=session_id_str,
     )
     return session_id_str
