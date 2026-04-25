@@ -1,0 +1,37 @@
+id: "br.lockup.pattern_detection"
+version: 1
+category: technique
+subcategory: lockup
+difficulty: beginner
+
+detection:
+  signal: lockup_event_count
+  condition: "lockup_event_count >= 3"
+  context:
+    must_have_channels: ["brake", "speed", "wheel_speed_fl", "wheel_speed_fr"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 3 = low, 5 = medium, 8 = high"
+
+explanation_template:
+  beginner: "You locked up {{count}} times this session. You're stamping on the brake — apply pressure progressively, don't punch it."
+  intermediate: "Lockup pattern detected ({{count}} events). Initial brake-application slope is too aggressive; build pressure to peak instead of stepping to it."
+  advanced: "Lockup count = {{count}} across the session. Brake-pressure rise rate exceeds tire μ-slip threshold at apply-phase onset; soften the initial bite then ramp to target pressure."
+
+prescription:
+  drill_template_id: "drill.progressive_brake_application"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "lockup_event_count"
+    comparison: "lte"
+    target_pct: 1.0
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim tires recover from lockup faster than real ones; real-world lockups also flat-spot tires, so the cost of the same mistake is higher on track"]

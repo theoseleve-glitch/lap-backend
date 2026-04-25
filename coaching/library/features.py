@@ -139,6 +139,16 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.PIPELINE,
     ),
+    # T192 — discrete-event count, no reference benchmark.
+    FeatureSpec(
+        name="lockup_event_count",
+        unit="count",
+        description=(
+            "Number of lockup events detected in the session "
+            "(wheel speed dropping well below vehicle speed)."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}
