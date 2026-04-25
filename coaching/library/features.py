@@ -188,6 +188,19 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.PIPELINE,
     ),
+    # T196 — where in the corner-entry distance the brake comes
+    # fully off. 0% = at the braking marker, 100% = at the apex.
+    FeatureSpec(
+        name="brake_release_position_pct",
+        unit="ratio",
+        description=(
+            "Position along the braking-marker → apex distance "
+            "where the brake reaches zero pressure. 0.0 = at "
+            "the marker, 1.0 = at the apex. Target window is "
+            "0.80-1.00 for a proper trail-brake handoff."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}
