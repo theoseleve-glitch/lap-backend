@@ -21,10 +21,13 @@ coordination for what is effectively config.
 """
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+DEFAULT_TRACKS_DIR = Path(__file__).resolve().parent / "tracks"
 
 
 class TrackCatalogParseError(ValueError):
@@ -108,3 +111,29 @@ def load_track_yaml(path: Path) -> TrackCatalogEntry:
         sector_checkpoints=checkpoints,
         corner_names=tuple(str(n) for n in data["corner_names"]),
     )
+
+
+def load_track_catalog(tracks_dir: Path) -> dict[str, TrackCatalogEntry]:
+    """Read every `*.yaml` under `tracks_dir` and key them by
+    master_track_id. Raises `TrackCatalogParseError` on duplicate
+    IDs (sim↔real equivalence requires uniqueness)."""
+    catalog: dict[str, TrackCatalogEntry] = {}
+    for path in sorted(tracks_dir.glob("*.yaml")):
+        entry = load_track_yaml(path)
+        if entry.master_track_id in catalog:
+            existing = catalog[entry.master_track_id]
+            raise TrackCatalogParseError(
+                "duplicate_master_track_id: "
+                f"{entry.master_track_id} used by both "
+                f"{existing.name!r} and {entry.name!r}"
+            )
+        catalog[entry.master_track_id] = entry
+    return catalog
+
+
+@lru_cache(maxsize=1)
+def get_track_catalog() -> dict[str, TrackCatalogEntry]:
+    """Production accessor: lazy-loaded, cached for the process
+    lifetime. First call walks `DEFAULT_TRACKS_DIR`; subsequent
+    calls return the same dict object."""
+    return load_track_catalog(DEFAULT_TRACKS_DIR)
