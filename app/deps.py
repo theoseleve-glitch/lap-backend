@@ -163,3 +163,21 @@ async def require_admin(
     if not user.is_admin:
         raise _FORBIDDEN_NOT_ADMIN
     return user
+
+
+# Stripe statuses that grant product access. `past_due` is intentionally
+# absent — T163 layers a soft 48h grace period on top of this gate.
+_ACTIVE_SUBSCRIPTION_STATUSES = frozenset({"active", "trialing"})
+
+_PAYMENT_REQUIRED = HTTPException(
+    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+    detail="subscription_required",
+)
+
+
+async def require_active_subscription(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    if user.subscription_status not in _ACTIVE_SUBSCRIPTION_STATUSES:
+        raise _PAYMENT_REQUIRED
+    return user
