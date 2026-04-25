@@ -10,3 +10,7 @@ class Config(BaseSettings):
     clerk_webhook_secret: SecretStr = SecretStr("")
     stripe_secret: SecretStr
     storage_root: str = "./var/blobs"
+    r2_bucket: str = ""
+    r2_endpoint_url: str = ""
+    r2_access_key_id: SecretStr = SecretStr("")
+    r2_secret_access_key: SecretStr = SecretStr("")

@@ -16,7 +16,7 @@ from infra.db import make_engine, make_session_factory
 from infra.idempotency_cache import IdempotencyCache
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
-from infra.storage import BlobStoreProtocol, LocalBlobStore
+from infra.storage import BlobStoreProtocol, LocalBlobStore, R2BlobStore
 from infra.task_dispatcher import InMemoryTaskDispatcher, TaskDispatcherProtocol
 
 
@@ -56,7 +56,15 @@ def get_idempotency_cache() -> IdempotencyCache:
 
 @lru_cache
 def get_blob_store() -> BlobStoreProtocol:
-    return LocalBlobStore(Path(get_config().storage_root))
+    cfg = get_config()
+    if cfg.r2_bucket:
+        return R2BlobStore(
+            bucket=cfg.r2_bucket,
+            endpoint_url=cfg.r2_endpoint_url or None,
+            access_key_id=cfg.r2_access_key_id.get_secret_value(),
+            secret_access_key=cfg.r2_secret_access_key.get_secret_value(),
+        )
+    return LocalBlobStore(Path(cfg.storage_root))
 
 
 @lru_cache
