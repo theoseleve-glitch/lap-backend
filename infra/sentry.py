@@ -17,4 +17,6 @@ def configure_sentry(dsn: str) -> None:
     every other secret to be present in env)."""
     if not dsn:
         return
-    sentry_sdk.init(dsn=dsn)
+    # T167 — sample 10% of transactions. Cheap by default; raise
+    # via the Sentry dashboard for incident-driven deep-dive.
+    sentry_sdk.init(dsn=dsn, traces_sample_rate=0.1)

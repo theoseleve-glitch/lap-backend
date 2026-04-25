@@ -64,6 +64,25 @@ def test_non_empty_dsn_initializes_sdk() -> None:
     assert captured["dsn"] == "https://key@o0.ingest.sentry.io/1"
 
 
+def test_traces_sample_rate_is_10_percent() -> None:
+    # T167 — keep performance/trace volume sane: only 10% of
+    # transactions sampled. Tweak via Sentry dashboard if more
+    # detail is needed for a specific incident.
+    captured: dict[str, Any] = {}
+
+    def spy(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    real_init = sentry_sdk.init
+    sentry_sdk.init = spy  # type: ignore[assignment]
+    try:
+        configure_sentry("https://key@o0.ingest.sentry.io/1")
+    finally:
+        sentry_sdk.init = real_init  # type: ignore[assignment]
+
+    assert captured["traces_sample_rate"] == 0.1
+
+
 def test_500_error_is_captured_after_configure() -> None:
     # Prove the SDK actually fields a captured exception. We init
     # with a before_send hook that records events instead of
