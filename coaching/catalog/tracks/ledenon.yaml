@@ -1,0 +1,30 @@
+# Circuit de Lédenon — full course. Lédenon, Gard, Occitanie, France.
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: ledenon
+layout_name: full-course
+length_m: 3151.0
+master_track_id: 019dcacb-7000-7000-8000-000000000007
+
+start_finish:
+  lat: 43.9282
+  lon: 4.5031
+  heading_deg: 100.0
+
+sector_checkpoints:
+  - distance_m: 1000.0
+    name: "S1 end (after Le Tourniquet)"
+  - distance_m: 2150.0
+    name: "S2 end (after Le Saut)"
+
+corner_names:
+  - "T1 - Le Tourniquet"
+  - "T2 - L'Esse"
+  - "T3 - La Combe"
+  - "T4 - Le Saut"
+  - "T5 - La Côte"
+  - "T6 - Les Esses du Combé"
+  - "T7 - L'Épingle"
+  - "T8 - La Berge"
+  - "T9 - La Tribune"
