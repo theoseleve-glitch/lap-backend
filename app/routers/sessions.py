@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Annotated
 
@@ -74,6 +75,10 @@ async def ingest_session(
         ) from exc
 
     session_id = str(parsed_manifest.session_id)
+    expected_checksums = parsed_manifest.telemetry_checksums
+    # Two-pass: read + verify ALL chunks before persisting any. A
+    # mid-loop checksum failure must not leave half the upload on disk.
+    verified: list[tuple[str, bytes]] = []
     for chunk in chunks or []:
         filename = chunk.filename or ""
         if (
@@ -87,6 +92,15 @@ async def ingest_session(
                 detail="chunk_filename_invalid",
             )
         payload = await chunk.read()
+        if filename in expected_checksums:
+            actual = f"sha256:{hashlib.sha256(payload).hexdigest()}"
+            if actual != expected_checksums[filename]:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="chunk_checksum_mismatch",
+                )
+        verified.append((filename, payload))
+    for filename, payload in verified:
         blob_store.put(f"{session_id}/{filename}", payload)
 
     response = SessionIngestAccepted(status="accepted")
