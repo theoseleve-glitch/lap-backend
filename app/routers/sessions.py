@@ -1,5 +1,6 @@
 import json
-from typing import Annotated
+from typing import Annotated, cast
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -12,8 +13,10 @@ from fastapi import (
     UploadFile,
     status,
 )
-from lap_schemas.v1 import SessionIngestAccepted, SessionManifest
+from lap_schemas.v1 import SessionDetail, SessionIngestAccepted, SessionManifest
+from lap_schemas.v1.session import SessionStatus
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import (
@@ -28,6 +31,7 @@ from domain.checksum_validator import (
     verify_chunk_checksum,
 )
 from infra.idempotency_cache import IdempotencyCache
+from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
@@ -161,3 +165,40 @@ async def ingest_session(
     )
     cache.put(idempotency_key, response.model_dump_json().encode())
     return response
+
+
+@router.get("/{session_id}", response_model=SessionDetail)
+async def get_session(
+    session_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SessionDetail:
+    # T123: expose Session.status (and failure_reason) so clients
+    # polling after a Celery job sees the transition to "ready" or
+    # "failed". Authorization: only the owning driver can read.
+    # Both unknown and non-owned sessions return 404 (don't leak
+    # existence to non-owners).
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if row is None or profile is None or row.driver_id != profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+    return SessionDetail(
+        id=row.id,
+        driver_id=row.driver_id,
+        status=cast(SessionStatus, row.status),
+        created_at=row.created_at,
+        failure_reason=row.failure_reason,
+    )

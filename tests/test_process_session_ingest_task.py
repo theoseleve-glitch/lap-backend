@@ -82,9 +82,12 @@ def test_task_is_registered_on_celery_app() -> None:
     assert "infra.celery_app.process_session_ingest" in celery_app.tasks
 
 
-def test_task_transitions_status_to_processing(
+def test_task_leaves_status_ready_when_processing_succeeds(
     seeded_session: dict[str, Any],
 ) -> None:
+    # T109 set status="processing" mid-run; T123 then transitions
+    # the row to "ready" once the SessionRecord is persisted. End
+    # state observed by the caller is "ready".
     session_id = seeded_session["session_id"]
     factory = seeded_session["factory"]
     process_session_ingest.delay(str(session_id))
@@ -98,7 +101,7 @@ def test_task_transitions_status_to_processing(
             ).scalar_one()
             return str(row.status)
 
-    assert asyncio.run(_read_status()) == "processing"
+    assert asyncio.run(_read_status()) == "ready"
 
 
 def test_task_returns_session_id_for_chained_tasks(

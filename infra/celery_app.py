@@ -112,6 +112,32 @@ class SessionIngestTask(Task):  # type: ignore[misc]
             )
 
 
+async def _mark_ready(session_id: UUID) -> None:
+    """T123 final-success marker: status="ready" once processing has
+    finished and the SessionRecord row exists.
+
+    Mirrors `_mark_processing`/`_mark_failed`: fresh worker-local
+    engine, single update + commit. Raises if the session is missing
+    so a stale id surfaces in logs rather than silently no-op'ing.
+    """
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            row = (
+                await db.execute(
+                    select(SessionRow).where(SessionRow.id == session_id)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                raise ValueError(f"session_not_found: {session_id}")
+            row.status = "ready"
+            await db.commit()
+    finally:
+        await engine.dispose()
+
+
 async def _persist_session_record(
     session_id: UUID, payload: dict[str, Any]
 ) -> None:
@@ -205,5 +231,11 @@ def process_session_ingest(session_id_str: str) -> str:
     logger.info(
         "process_session_ingest.session_record_persisted",
         session_id=session_id_str,
+    )
+    # T123: final transition to "ready" so GET /sessions/:id reports
+    # the work is done.
+    asyncio.run(_mark_ready(session_id))
+    logger.info(
+        "process_session_ingest.marked_ready", session_id=session_id_str
     )
     return session_id_str
