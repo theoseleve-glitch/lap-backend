@@ -161,4 +161,9 @@ async def receive_stripe_webhook(
             await _set_subscription_status_from_metadata(
                 db, sub.get("metadata"), sub_status
             )
+    elif event_type == "customer.subscription.deleted":
+        sub = event_dict["data"]["object"]
+        await _set_subscription_status_from_metadata(
+            db, sub.get("metadata"), "canceled"
+        )
     return {"status": "received"}
