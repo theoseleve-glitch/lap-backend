@@ -1,0 +1,34 @@
+# Charlotte Motor Speedway — Roval (combined oval + infield road
+# course used by NASCAR Cup playoffs and iRacing). Concord, NC.
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: charlotte
+layout_name: roval
+length_m: 3733.0
+master_track_id: 019dcacb-7000-7000-8000-000000000008
+
+start_finish:
+  lat: 35.3527
+  lon: -80.6829
+  heading_deg: 225.0
+
+sector_checkpoints:
+  - distance_m: 1200.0
+    name: "S1 end (after Backstretch Chicane)"
+  - distance_m: 2500.0
+    name: "S2 end (after Infield Hairpin)"
+
+corner_names:
+  - "T1 - Oval Turn 4 exit"
+  - "T2 - Backstretch Chicane (entry)"
+  - "T3 - Backstretch Chicane (exit)"
+  - "T4 - Infield Right"
+  - "T5 - Infield Hairpin"
+  - "T6 - Infield Left"
+  - "T7 - Infield Esses"
+  - "T8 - Oval Turn 1 entry"
+  - "T9 - Oval Turn 2 exit"
+  - "T10 - Frontstretch Chicane (entry)"
+  - "T11 - Frontstretch Chicane (exit)"
+  - "T12 - Tri-oval"
