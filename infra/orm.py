@@ -75,6 +75,9 @@ class Session(Base):
     status: Mapped[str] = mapped_column(
         String(32), default="uploaded", server_default="uploaded"
     )
+    failure_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
 
 
 class SessionRecord(Base):
