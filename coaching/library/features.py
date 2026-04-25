@@ -88,6 +88,25 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.REFERENCE,
     ),
+    # T189 — early-braking detection.
+    FeatureSpec(
+        name="entry_speed",
+        unit="km/h",
+        description=(
+            "Speed at the corner entry waypoint (start of the "
+            "primary braking zone)."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
+    FeatureSpec(
+        name="reference_entry_speed",
+        unit="km/h",
+        description=(
+            "Benchmark entry speed (driver PB / cohort median) "
+            "to compare against."
+        ),
+        kind=FeatureKind.REFERENCE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}

@@ -1,0 +1,37 @@
+id: "br.early_braking.entry_speed_loss"
+version: 1
+category: technique
+subcategory: early_braking
+difficulty: beginner
+
+detection:
+  signal: entry_speed
+  condition: "entry_speed < reference_entry_speed * 0.93"
+  context:
+    must_have_channels: ["brake", "speed", "throttle"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 3
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.93 = low, 0.88 = medium, 0.82 = high"
+
+explanation_template:
+  beginner: "You enter {{corner}} {{delta_kmh}} km/h slow. You're braking too early — try a later marker."
+  intermediate: "Entry-speed deficit of {{delta_kmh}} km/h on {{corner}}. Initial brake application is premature; carry more speed into the braking zone."
+  advanced: "Entry-speed loss = {{delta_kmh}} km/h on {{corner}}. Brake-application onset leads the reference by an over-conservative margin; tighten the braking-zone window."
+
+prescription:
+  drill_template_id: "drill.late_brake_marker_progression"
+  expected_gain_kmh: "2-4"
+  success_condition:
+    metric: "entry_speed"
+    comparison: "gte"
+    target_pct: 0.96
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["real-world brake markers are visually noisier; sim drivers may need to translate marker count to physical references"]
