@@ -1,0 +1,12 @@
+# Ferrari 296 GT3 (2023). FIA GT3, 3.0L twin-turbo V6.
+source_provider: lap-coach-catalog
+name: ferrari-296-gt3-2023
+manufacturer: Ferrari
+model: 296 GT3
+year: 2023
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-100000000005
+mass_kg: 1300.0
+power_kw: 447.0
+drive_type: RWD
+aspiration: Turbo

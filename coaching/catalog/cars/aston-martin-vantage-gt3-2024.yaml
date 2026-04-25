@@ -1,0 +1,12 @@
+# Aston Martin Vantage GT3 (2024). FIA GT3, 4.0L twin-turbo V8.
+source_provider: lap-coach-catalog
+name: aston-martin-vantage-gt3-2024
+manufacturer: Aston Martin
+model: Vantage GT3
+year: 2024
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-100000000008
+mass_kg: 1300.0
+power_kw: 388.0
+drive_type: RWD
+aspiration: Turbo

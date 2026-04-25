@@ -1,0 +1,12 @@
+# KZ shifter kart — 6-speed sequential, ~125cc 2-stroke. CIK-FIA.
+source_provider: lap-coach-catalog
+name: karting-kz-shifter
+manufacturer: CIK-FIA
+model: KZ
+year: 2024
+car_class: Karting/KZ
+master_car_id: 019dcacb-7000-7000-8000-100000000010
+mass_kg: 175.0
+power_kw: 37.0
+drive_type: RWD
+aspiration: NA

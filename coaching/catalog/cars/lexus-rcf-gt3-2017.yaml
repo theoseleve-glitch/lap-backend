@@ -1,0 +1,12 @@
+# Lexus RC F GT3 (2017). SRO GT3 / IMSA GTD, 5.4L NA V8.
+source_provider: lap-coach-catalog
+name: lexus-rcf-gt3-2017
+manufacturer: Lexus
+model: RC F GT3
+year: 2017
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-10000000000b
+mass_kg: 1320.0
+power_kw: 403.0
+drive_type: RWD
+aspiration: NA

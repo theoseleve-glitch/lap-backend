@@ -1,0 +1,13 @@
+# Honda NSX GT3 Evo (2019). FIA GT3, 3.5L twin-turbo V6.
+# Sister car to Acura NSX GT3 Evo (different homologation market).
+source_provider: lap-coach-catalog
+name: honda-nsx-gt3-evo-2019
+manufacturer: Honda
+model: NSX GT3 Evo
+year: 2019
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-10000000000a
+mass_kg: 1310.0
+power_kw: 410.0
+drive_type: RWD
+aspiration: Turbo

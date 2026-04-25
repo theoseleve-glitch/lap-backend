@@ -1,0 +1,12 @@
+# BMW M4 GT3 (G82, 2022). FIA GT3, P58 twin-turbo I6.
+source_provider: lap-coach-catalog
+name: bmw-m4-gt3-2022
+manufacturer: BMW
+model: M4 GT3
+year: 2022
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-100000000003
+mass_kg: 1310.0
+power_kw: 440.0
+drive_type: RWD
+aspiration: Turbo

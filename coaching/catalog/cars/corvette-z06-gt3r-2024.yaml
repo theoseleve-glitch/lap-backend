@@ -1,0 +1,12 @@
+# Chevrolet Corvette Z06 GT3.R (2024). FIA GT3, 5.5L NA V8.
+source_provider: lap-coach-catalog
+name: corvette-z06-gt3r-2024
+manufacturer: Chevrolet
+model: Corvette Z06 GT3.R
+year: 2024
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-10000000000f
+mass_kg: 1300.0
+power_kw: 451.0
+drive_type: RWD
+aspiration: NA

@@ -1,0 +1,12 @@
+# Lamborghini Huracan GT3 Evo2 (2023). FIA GT3, 5.2L NA V10.
+source_provider: lap-coach-catalog
+name: lamborghini-huracan-gt3-evo2-2023
+manufacturer: Lamborghini
+model: Huracan GT3 Evo2
+year: 2023
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-100000000006
+mass_kg: 1300.0
+power_kw: 417.0
+drive_type: RWD
+aspiration: NA

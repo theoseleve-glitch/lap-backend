@@ -137,3 +137,69 @@ def get_track_catalog() -> dict[str, TrackCatalogEntry]:
     lifetime. First call walks `DEFAULT_TRACKS_DIR`; subsequent
     calls return the same dict object."""
     return load_track_catalog(DEFAULT_TRACKS_DIR)
+
+
+# --- Car catalog (T138 / ADR-014) ----------------------------------
+
+DEFAULT_CARS_DIR = Path(__file__).resolve().parent / "cars"
+
+
+@dataclass(frozen=True)
+class CarCatalogEntry:
+    source_provider: str
+    name: str
+    manufacturer: str
+    model: str
+    year: int
+    car_class: str  # "GT3", "Karting/KZ", "Karting/X30", ...
+    master_car_id: str  # UUID7 string; sim↔real equivalence anchor
+    mass_kg: float  # race trim incl. driver
+    power_kw: float  # peak crank power
+    drive_type: str  # "RWD" | "FWD" | "AWD"
+    aspiration: str  # "NA" | "Turbo" | "Supercharged" | "Hybrid"
+
+
+_REQUIRED_CAR_FIELDS = (
+    "source_provider",
+    "name",
+    "manufacturer",
+    "model",
+    "year",
+    "car_class",
+    "master_car_id",
+    "mass_kg",
+    "power_kw",
+    "drive_type",
+    "aspiration",
+)
+
+
+def load_car_yaml(path: Path) -> CarCatalogEntry:
+    try:
+        with path.open(encoding="utf-8") as f:
+            data: Any = yaml.safe_load(f)
+    except yaml.YAMLError as exc:
+        raise TrackCatalogParseError(f"yaml_parse_error: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise TrackCatalogParseError(
+            "expected_top_level_dict, got non-dict"
+        )
+
+    for field in _REQUIRED_CAR_FIELDS:
+        if field not in data:
+            raise TrackCatalogParseError(f"missing_field: {field}")
+
+    return CarCatalogEntry(
+        source_provider=str(data["source_provider"]),
+        name=str(data["name"]),
+        manufacturer=str(data["manufacturer"]),
+        model=str(data["model"]),
+        year=int(data["year"]),
+        car_class=str(data["car_class"]),
+        master_car_id=str(data["master_car_id"]),
+        mass_kg=float(data["mass_kg"]),
+        power_kw=float(data["power_kw"]),
+        drive_type=str(data["drive_type"]),
+        aspiration=str(data["aspiration"]),
+    )

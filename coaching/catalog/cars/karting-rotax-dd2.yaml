@@ -1,0 +1,12 @@
+# Rotax DD2 — direct-drive 2-speed, 125cc 2-stroke. Rotax Max series.
+source_provider: lap-coach-catalog
+name: karting-rotax-dd2
+manufacturer: Rotax
+model: DD2 Max
+year: 2024
+car_class: Karting/Rotax-DD2
+master_car_id: 019dcacb-7000-7000-8000-100000000011
+mass_kg: 175.0
+power_kw: 25.0
+drive_type: RWD
+aspiration: NA

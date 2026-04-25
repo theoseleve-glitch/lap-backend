@@ -1,0 +1,12 @@
+# Ford Mustang GT3 (2024). FIA GT3, 5.4L NA V8.
+source_provider: lap-coach-catalog
+name: ford-mustang-gt3-2024
+manufacturer: Ford
+model: Mustang GT3
+year: 2024
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-10000000000c
+mass_kg: 1300.0
+power_kw: 395.0
+drive_type: RWD
+aspiration: NA

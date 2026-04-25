@@ -1,0 +1,12 @@
+# Audi R8 LMS Evo II (2022). FIA GT3, 5.2L NA V10.
+source_provider: lap-coach-catalog
+name: audi-r8-lms-evo-ii-2022
+manufacturer: Audi
+model: R8 LMS Evo II
+year: 2022
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-100000000004
+mass_kg: 1320.0
+power_kw: 421.0
+drive_type: RWD
+aspiration: NA

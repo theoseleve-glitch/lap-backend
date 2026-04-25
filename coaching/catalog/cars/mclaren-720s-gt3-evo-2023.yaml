@@ -1,0 +1,12 @@
+# McLaren 720S GT3 Evo (2023). FIA GT3, 4.0L twin-turbo V8.
+source_provider: lap-coach-catalog
+name: mclaren-720s-gt3-evo-2023
+manufacturer: McLaren
+model: 720S GT3 Evo
+year: 2023
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-100000000007
+mass_kg: 1330.0
+power_kw: 432.0
+drive_type: RWD
+aspiration: Turbo

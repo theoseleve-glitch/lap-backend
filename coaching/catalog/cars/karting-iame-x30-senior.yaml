@@ -1,0 +1,13 @@
+# IAME X30 Senior — single-speed direct-drive, 125cc 2-stroke.
+# IAME-spec international class.
+source_provider: lap-coach-catalog
+name: karting-iame-x30-senior
+manufacturer: IAME
+model: X30 Senior
+year: 2024
+car_class: Karting/X30
+master_car_id: 019dcacb-7000-7000-8000-100000000012
+mass_kg: 165.0
+power_kw: 22.0
+drive_type: RWD
+aspiration: NA

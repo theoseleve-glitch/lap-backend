@@ -1,0 +1,12 @@
+# Mercedes-AMG GT3 Evo (C190, 2020 update). FIA GT3.
+source_provider: lap-coach-catalog
+name: mercedes-amg-gt3-evo-2020
+manufacturer: Mercedes-AMG
+model: GT3 Evo
+year: 2020
+car_class: GT3
+master_car_id: 019dcacb-7000-7000-8000-100000000002
+mass_kg: 1310.0
+power_kw: 410.0
+drive_type: RWD
+aspiration: NA
