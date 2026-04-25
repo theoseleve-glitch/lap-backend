@@ -201,6 +201,19 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.PIPELINE,
     ),
+    # T197 — peak braking deceleration as a fraction of the
+    # tires' theoretical grip ceiling. <0.85 = under-driven.
+    FeatureSpec(
+        name="peak_decel_grip_ratio",
+        unit="ratio",
+        description=(
+            "Peak braking deceleration as a fraction of the "
+            "tires' theoretical max grip (longitudinal μ × g). "
+            "Pros sit ~0.95; values <0.85 mean braking distance "
+            "is being left on the table."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}
