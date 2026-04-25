@@ -24,11 +24,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alembic import command
-from app.deps import get_db, get_idempotency_cache, get_jwks_client
+from app.deps import (
+    get_blob_store,
+    get_db,
+    get_idempotency_cache,
+    get_jwks_client,
+)
 from app.main import app
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
 from infra.idempotency_cache import IdempotencyCache
+from infra.storage import LocalBlobStore
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
@@ -89,10 +95,12 @@ def configured_app(
         )
 
     cache = IdempotencyCache(fakeredis.FakeRedis(), ttl_seconds=86400)
+    blob_store = LocalBlobStore(tmp_path / "blobs")
 
     app.dependency_overrides[get_db] = fake_get_db
     app.dependency_overrides[get_jwks_client] = fake_jwks_client
     app.dependency_overrides[get_idempotency_cache] = lambda: cache
+    app.dependency_overrides[get_blob_store] = lambda: blob_store
     try:
         yield {"keys": keys, "cache": cache}
     finally:

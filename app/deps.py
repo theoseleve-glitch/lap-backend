@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any
 
 import jwt
@@ -15,6 +16,7 @@ from infra.db import make_engine, make_session_factory
 from infra.idempotency_cache import IdempotencyCache
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
+from infra.storage import BlobStoreProtocol, LocalBlobStore
 
 
 @lru_cache
@@ -49,6 +51,11 @@ def get_pairing_store() -> PairingStoreProtocol:
 def get_idempotency_cache() -> IdempotencyCache:
     client = redis.Redis.from_url(get_config().redis_url)
     return IdempotencyCache(client)
+
+
+@lru_cache
+def get_blob_store() -> BlobStoreProtocol:
+    return LocalBlobStore(Path(get_config().storage_root))
 
 
 _UNAUTHORIZED = HTTPException(

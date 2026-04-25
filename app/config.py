@@ -9,3 +9,4 @@ class Config(BaseSettings):
     clerk_issuer: str = "https://clerk.example.invalid"
     clerk_webhook_secret: SecretStr = SecretStr("")
     stripe_secret: SecretStr
+    storage_root: str = "./var/blobs"
