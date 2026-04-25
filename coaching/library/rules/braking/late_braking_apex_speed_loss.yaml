@@ -1,0 +1,37 @@
+id: "br.late_braking.apex_speed_loss"
+version: 1
+category: technique
+subcategory: late_braking
+difficulty: beginner
+
+detection:
+  signal: apex_speed
+  condition: "apex_speed < reference_apex_speed * 0.93"
+  context:
+    must_have_channels: ["brake", "speed", "steering_angle"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 3
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.93 = low, 0.88 = medium, 0.82 = high"
+
+explanation_template:
+  beginner: "You lose {{delta_kmh}} km/h at the apex of {{corner}}. You're braking too late."
+  intermediate: "Apex speed deficit of {{delta_kmh}} km/h on {{corner}}. Trail brake release is abrupt."
+  advanced: "Apex-speed loss = {{delta_kmh}} km/h. Trail-brake release derivative spikes at t={{release_ms}}ms."
+
+prescription:
+  drill_template_id: "drill.trail_brake_later_release"
+  expected_gain_kmh: "2-5"
+  success_condition:
+    metric: "apex_speed"
+    comparison: "gte"
+    target_pct: 0.96
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["real braking is more binary; trail-brake release less linear"]
