@@ -174,6 +174,20 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.PIPELINE,
     ),
+    # T195 — front/rear balance during entry braking. Direction-
+    # agnostic: high values = rear locking before front
+    # regardless of absolute slip magnitude.
+    FeatureSpec(
+        name="rear_front_slip_ratio_entry",
+        unit="ratio",
+        description=(
+            "Rear-axle slip divided by front-axle slip during "
+            "the entry-braking phase. >1.5 means rear is "
+            "sliding much more than front (bias too rear, or "
+            "front insufficiently loaded)."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}
