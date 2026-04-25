@@ -146,8 +146,15 @@ async def ingest_session(
 
     # T103: queue downstream processing. Dispatcher is abstracted so
     # T107 can swap to a real Celery backend without touching callers.
-    task_dispatcher.dispatch_session_ingest(session_id)
+    job_id = task_dispatcher.dispatch_session_ingest(session_id)
 
-    response = SessionIngestAccepted(status="accepted")
+    # T104: response carries the session id, the dispatcher's job id,
+    # and the SSE stream URL the client subscribes to for progress.
+    response = SessionIngestAccepted(
+        status="accepted",
+        session_id=session_id,
+        ingest_job_id=job_id,
+        status_stream_url=f"/api/v1/jobs/{job_id}/events",
+    )
     cache.put(idempotency_key, response.model_dump_json().encode())
     return response
