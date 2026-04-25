@@ -6,6 +6,7 @@ Not exposed to regular users.
 """
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -15,13 +16,28 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_current_user, get_db
+from app.deps import get_current_user, get_db, require_admin
 from app.logging import logger
+from coaching.library.rule_runner import (
+    InsightRenderError,
+    run_rules,
+)
+from coaching.library.rule_schema import Difficulty
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+# T201 — admin can dry-run the coaching rule library against a
+# hand-crafted feature dict. Resolves the canonical rules tree
+# at the package root so this stays accurate if the file moves.
+_RULES_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "coaching"
+    / "library"
+    / "rules"
+)
 
 
 class RefundRequest(BaseModel):
@@ -205,3 +221,78 @@ async def admin_kpis(
         "upload_success_rate": float(upload_success_rate),
         "computed_at": datetime.now(UTC).isoformat(),
     }
+
+
+# T201 — admin dry-run for the coaching rules engine. Use case:
+# operator edits a rule's threshold or template, wants to verify
+# the rule fires (or doesn't) against a known feature dict
+# without waiting for a real driver session. Reloads the rules
+# tree on every call so YAML edits take effect without a server
+# restart — this endpoint is admin-only and rare, so the cost of
+# the file walk is fine.
+
+
+class _RuleSimulateRequest(BaseModel):
+    context: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Feature dict, same shape rule_runner.run_rules expects. "
+            "Numeric features for detection conditions plus any "
+            "string/number vars referenced by `{{var}}` placeholders "
+            "in the rule's explanation_template."
+        ),
+    )
+    difficulty: Difficulty = "beginner"
+
+
+class _InsightOut(BaseModel):
+    rule_id: str
+    rule_version: int
+    category: str
+    subcategory: str
+    difficulty: Difficulty
+    explanation: str
+
+
+class _RuleSimulateResponse(BaseModel):
+    insights: list[_InsightOut]
+
+
+@router.post(
+    "/coaching/rules/simulate", response_model=_RuleSimulateResponse
+)
+def simulate_coaching_rules(
+    body: _RuleSimulateRequest,
+    _admin: Annotated[UserRow, Depends(require_admin)],
+) -> _RuleSimulateResponse:
+    # Lazy import: avoids loading every YAML on app import for the
+    # 99% of requests that don't hit this endpoint, and lets the
+    # admin pick up rule edits without a process restart.
+    from coaching.library.rule_loader import load_rules
+
+    rules = load_rules(_RULES_DIR)
+    try:
+        insights = run_rules(
+            rules, context=body.context, difficulty=body.difficulty
+        )
+    except InsightRenderError as exc:
+        # Surface the rule_id + missing var in the HTTP error so
+        # the operator can fix the offending YAML in one step
+        # rather than tailing logs for the full traceback.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    return _RuleSimulateResponse(
+        insights=[
+            _InsightOut(
+                rule_id=ins.rule_id,
+                rule_version=ins.rule_version,
+                category=ins.category,
+                subcategory=ins.subcategory,
+                difficulty=ins.difficulty,
+                explanation=ins.explanation,
+            )
+            for ins in insights
+        ]
+    )
