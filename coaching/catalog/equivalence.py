@@ -17,8 +17,10 @@ import yaml
 
 from coaching.catalog.loader import (
     DEFAULT_CARS_DIR,
+    CarCatalogEntry,
     TrackCatalogEntry,
     TrackCatalogParseError,
+    get_car_catalog,
     get_track_catalog,
     load_car_yaml,
 )
@@ -212,3 +214,28 @@ def lookup_master_car_id(
     return get_sim_car_equivalence().get(
         SimCarKey(provider=provider, sim_car_id=sim_car_id)
     )
+
+
+def resolve_car_for_sim(
+    *,
+    provider: str,
+    sim_car_id: str,
+) -> CarCatalogEntry | None:
+    """Compose `lookup_master_car_id` + `get_car_catalog` to return
+    the full `CarCatalogEntry` for a sim-specific car identifier,
+    or `None` if either layer doesn't resolve."""
+    master_id = lookup_master_car_id(
+        provider=provider, sim_car_id=sim_car_id
+    )
+    if master_id is None:
+        return None
+    return get_car_catalog().get(master_id)
+
+
+def resolve_car_by_name(name: str) -> CarCatalogEntry | None:
+    """Look up a `CarCatalogEntry` by its kebab-case slug name.
+    Returns the first match or `None`."""
+    for entry in get_car_catalog().values():
+        if entry.name == name:
+            return entry
+    return None
