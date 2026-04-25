@@ -7,11 +7,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from infra.orm import ActionPrescription
+from infra.posthog import PosthogClientProtocol
 
 
 class PrescriptionRepo:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        *,
+        posthog_client: PosthogClientProtocol | None = None,
+    ) -> None:
         self._db = db
+        self._posthog = posthog_client
 
     async def get(self, prescription_id: UUID) -> ActionPrescription | None:
         return await self._db.get(ActionPrescription, prescription_id)
@@ -63,6 +70,24 @@ class PrescriptionRepo:
         )
         self._db.add(pres)
         await self._db.commit()
+        # T171: emit `prescription_created` once persisted. Tagged
+        # to driver_id so the prescription→outcome funnel joins
+        # cleanly against future T172/T173 events.
+        if self._posthog is not None:
+            self._posthog.capture(
+                event="prescription_created",
+                distinct_id=str(driver_id),
+                properties={
+                    "prescription_id": str(pres.id),
+                    "priority": priority,
+                    "drill_template_id": drill_template_id,
+                    "weakness_episode_id": (
+                        str(weakness_episode_id)
+                        if weakness_episode_id is not None
+                        else None
+                    ),
+                },
+            )
         return pres
 
     async def update_status(
