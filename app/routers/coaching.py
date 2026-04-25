@@ -14,15 +14,21 @@ via the bundle endpoint, not here.
 
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from lap_schemas.v1 import CoachingRuleList, CoachingRulePublic
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Config
-from app.deps import get_config
+from app.deps import get_config, get_current_user, get_db
 from coaching.library.bundle import sign_bundle
 from coaching.library.compiler import compile_library
 from coaching.library.rule_loader import load_rules
+from infra.orm import CoachingInsight as CoachingInsightRow
+from infra.orm import DriverProfile as DriverProfileRow
+from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/coaching", tags=["coaching"])
 
@@ -79,3 +85,52 @@ def get_rules_bundle(
     rules = load_rules(_RULES_DIR)
     unsigned = compile_library(rules)
     return sign_bundle(unsigned, secret=secret.encode("utf-8"))
+
+
+# T205 — false-positive flag. Driver who owns the session that
+# produced the insight POSTs here; we set
+# coaching_insights.flagged_false_positive=True. T206 aggregates
+# these flags per rule_id to surface mis-firing rules to admins.
+# Idempotent: re-flagging a flagged insight is a 200 no-op so
+# T206's aggregation doesn't double-count an accidental
+# double-click.
+
+
+@router.post("/insights/{insight_id}/flag")
+async def flag_insight_false_positive(
+    insight_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    insight = (
+        await db.execute(
+            select(CoachingInsightRow).where(
+                CoachingInsightRow.id == insight_id
+            )
+        )
+    ).scalar_one_or_none()
+    # Both unknown and not-owned collapse to 404 — same posture as
+    # sessions.get_session — so we don't leak existence to non-owners.
+    if (
+        insight is None
+        or profile is None
+        or insight.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="insight_not_found",
+        )
+    if not insight.flagged_false_positive:
+        insight.flagged_false_positive = True
+        await db.commit()
+    return {
+        "id": str(insight.id),
+        "flagged_false_positive": insight.flagged_false_positive,
+    }
