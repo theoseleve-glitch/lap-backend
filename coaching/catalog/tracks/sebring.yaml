@@ -1,0 +1,39 @@
+# Sebring International Raceway — 12h international layout.
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+# Sector boundaries are advisory v1; refined per real telemetry later.
+
+source_provider: lap-coach-catalog
+name: sebring
+layout_name: international-12h
+length_m: 6019.0
+master_track_id: 019dcacb-7000-7000-8000-000000000001
+
+start_finish:
+  lat: 27.4543
+  lon: -82.4994
+  heading_deg: 90.0
+
+sector_checkpoints:
+  - distance_m: 1830.0
+    name: "S1 end (T7 Tower)"
+  - distance_m: 4200.0
+    name: "S2 end (T13 Sunset)"
+
+corner_names:
+  - "T1 - Turn 1"
+  - "T2 - Big Bend"
+  - "T3 - Hairpin"
+  - "T4 - Sunset Bend (East)"
+  - "T5 - Cunningham"
+  - "T6 - Webster Turns"
+  - "T7 - Tower Turn"
+  - "T8 - Hotel Turn 1"
+  - "T9 - Hotel Turn 2"
+  - "T10 - Le Mans Curves"
+  - "T11 - Collier Bend"
+  - "T12 - Bishop's Bend"
+  - "T13 - Sunset Bend (West)"
+  - "T14 - Hairpin"
+  - "T15 - Carousel"
+  - "T16 - Bishop"
+  - "T17 - Sunset"
