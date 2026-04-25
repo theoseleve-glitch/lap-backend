@@ -8,6 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.logging import configure_logging, logger
 from app.rate_limit import rate_limit_middleware
+from app.routers import me as me_router
 
 configure_logging()
 
@@ -55,6 +56,9 @@ async def attach_request_id(
         structlog.contextvars.clear_contextvars()
     response.headers[REQUEST_ID_HEADER] = request_id
     return response
+
+
+app.include_router(me_router.router)
 
 
 @app.get("/healthz")
