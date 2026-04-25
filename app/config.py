@@ -7,4 +7,5 @@ class Config(BaseSettings):
     redis_url: str
     clerk_secret: SecretStr
     clerk_issuer: str = "https://clerk.example.invalid"
+    clerk_webhook_secret: SecretStr = SecretStr("")
     stripe_secret: SecretStr

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from alembic import command
 from app.deps import get_db
 from app.main import app
+from app.routers.webhooks import verify_clerk_webhook_signature
 from infra.db import make_engine, make_session_factory
 from infra.orm import User
 
@@ -34,7 +35,11 @@ def configured_app(
         async with factory() as session:
             yield session
 
+    async def bypass_signature() -> None:
+        return None
+
     app.dependency_overrides[get_db] = fake_get_db
+    app.dependency_overrides[verify_clerk_webhook_signature] = bypass_signature
     try:
         yield {"factory": factory, "url": url}
     finally:
