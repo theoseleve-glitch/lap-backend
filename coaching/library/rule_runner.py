@@ -29,6 +29,7 @@ class InsightRenderError(Exception):
 @dataclass(frozen=True)
 class CoachingInsight:
     rule_id: str
+    rule_version: int
     category: str
     subcategory: str
     difficulty: Difficulty
@@ -51,6 +52,7 @@ def run_rules(
         insights.append(
             CoachingInsight(
                 rule_id=rule.id,
+                rule_version=rule.version,
                 category=rule.category,
                 subcategory=rule.subcategory,
                 difficulty=difficulty,
