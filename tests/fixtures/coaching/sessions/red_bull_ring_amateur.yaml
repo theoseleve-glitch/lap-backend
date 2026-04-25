@@ -1,0 +1,72 @@
+# Synthetic Red Bull Ring session for an amateur driver. Used
+# by T200. The third fixture profile (after Sebring T198 and
+# Silverstone T199) — designed to fire a different rule subset
+# so the integration suite proves the library distinguishes
+# track AND error profiles, not just labels them.
+#
+# Profile: amateur at the RBR Spielberg layout. Short lap (~9
+# corners), aggressive elevation changes — climb to T1 (Niki-
+# Lauda-Kurve) then plummet down into T3 (Remus). Common
+# mistakes for amateurs here:
+# - Late braking into T1 — the elevation crest hides the brake
+#   reference, easy to overshoot apex (T188)
+# - Inconsistent brake pressure — every lap the elevation
+#   reference shifts subjectively, so amateurs can't anchor on
+#   a fixed pressure target (T191)
+# - Rear locking entering T1/T3 — braking *downhill* unloads
+#   the rear axle; without forward bias adjustment the rear
+#   locks before front grip is available (T195)
+#
+# Designed firing set: T188 + T191 + T195. None overlap with
+# Sebring's T192/T197 or Silverstone's T194/T196 — the
+# symmetric difference vs each other fixture is 4 rules,
+# comfortably above the 2-rule minimum the cross-fixture diff
+# tests assert.
+
+# T188 — late braking → fires (apex 91% of reference < 93%)
+apex_speed: 91.0
+reference_apex_speed: 100.0
+
+# T189 — early braking → does NOT fire (entry close to ref)
+entry_speed: 96.0
+reference_entry_speed: 100.0
+
+# T190 — abrupt release → does NOT fire (release rate < 1.5x ref)
+brake_release_rate: 2.5
+reference_brake_release_rate: 2.0
+
+# T191 — inconsistent pressure → fires (CoV 0.20 > 0.15)
+brake_pressure_cov_in_sector: 0.20
+
+# T192 — lockup pattern → does NOT fire (smooth surface, count < 3)
+lockup_event_count: 2
+
+# T193 — cold brakes → does NOT fire (warmed in properly)
+first_lap_brake_distance_ratio: 1.05
+
+# T194 — over-braking mid-corner → does NOT fire (apex pressure low)
+mid_corner_brake_pressure_pct: 0.10
+
+# T195 — balance shift → fires (rear/front slip 1.7 > 1.5,
+# downhill braking into T1 unloads the rear)
+rear_front_slip_ratio_entry: 1.70
+
+# T196 — trail brake released too early → does NOT fire
+# (held to 78% — well past the 60% threshold)
+brake_release_position_pct: 0.78
+
+# T197 — threshold not reached → does NOT fire (driver finds
+# threshold even though pressure is uneven; it's the variance
+# that's the issue, not under-utilization)
+peak_decel_grip_ratio: 0.92
+
+# Template variables for fired rules' explanations (beginner
+# difficulty). Padded with vars used in intermediate/advanced
+# templates so a future test that bumps difficulty doesn't
+# break this fixture.
+delta_kmh: 9
+corner: "Turn 1"
+release_ms: 260
+sector: "S1"
+cov_pct: 20
+ratio_pct: 170
