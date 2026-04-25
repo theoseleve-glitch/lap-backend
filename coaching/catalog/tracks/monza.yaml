@@ -1,0 +1,33 @@
+# Autodromo Nazionale Monza — Grand Prix layout (F1 / WEC,
+# the "Temple of Speed"). Monza, Lombardy, Italy.
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: monza
+layout_name: grand-prix
+length_m: 5793.0
+master_track_id: 019dcacb-7000-7000-8000-00000000000a
+
+start_finish:
+  lat: 45.6156
+  lon: 9.2811
+  heading_deg: 75.0
+
+sector_checkpoints:
+  - distance_m: 1620.0
+    name: "S1 end (after Variante della Roggia)"
+  - distance_m: 4170.0
+    name: "S2 end (after Variante Ascari)"
+
+corner_names:
+  - "T1 - Variante del Rettifilo (entry)"
+  - "T2 - Variante del Rettifilo (exit)"
+  - "T3 - Curva Grande"
+  - "T4 - Variante della Roggia (entry)"
+  - "T5 - Variante della Roggia (exit)"
+  - "T6 - Lesmo 1"
+  - "T7 - Lesmo 2"
+  - "T8 - Variante Ascari (entry)"
+  - "T9 - Variante Ascari (middle)"
+  - "T10 - Variante Ascari (exit)"
+  - "T11 - Curva Parabolica"
