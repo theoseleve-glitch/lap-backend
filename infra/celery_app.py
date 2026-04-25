@@ -49,6 +49,12 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.weekly_kpi_report",
         "schedule": crontab(hour=9, minute=0, day_of_week=1),
     },
+    # T180 — daily 08:00 UTC sweep for sessions stuck in `recording`
+    # >24h. Posts to Slack only when there's something to flag.
+    "daily-session-loss-audit": {
+        "task": "infra.celery_app.daily_session_loss_audit",
+        "schedule": crontab(hour=8, minute=0),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -288,4 +294,38 @@ async def _send_weekly_kpi_report() -> None:
 def weekly_kpi_report() -> str:
     """Beat-triggered Monday 09:00 UTC. Posts the weekly digest."""
     asyncio.run(_send_weekly_kpi_report())
+    return "ok"
+
+
+async def _run_session_loss_audit() -> None:
+    """T180 cron body: scan for stuck sessions, alert if any."""
+    from datetime import UTC, datetime
+
+    from infra.session_audit import send_session_loss_alert
+    from infra.slack import make_slack_poster
+
+    channel = os.environ.get("SLACK_ALERTS_CHANNEL", "#alerts")
+    token = os.environ.get("SLACK_BOT_TOKEN", "")
+    if not token:
+        logger.warning("session_loss_audit.no_slack_token")
+        return
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            await send_session_loss_alert(
+                db,
+                make_slack_poster(token),
+                channel=channel,
+                now=datetime.now(UTC),
+            )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.daily_session_loss_audit")  # type: ignore[untyped-decorator]
+def daily_session_loss_audit() -> str:
+    """Beat-triggered daily 08:00 UTC. Audits stuck sessions."""
+    asyncio.run(_run_session_loss_audit())
     return "ok"
