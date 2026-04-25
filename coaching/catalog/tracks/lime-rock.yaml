@@ -1,0 +1,29 @@
+# Lime Rock Park — Classic (no-chicane) layout. Lakeville, CT.
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: lime-rock
+layout_name: classic
+length_m: 2459.0
+master_track_id: 019dcacb-7000-7000-8000-000000000006
+
+start_finish:
+  lat: 41.9284
+  lon: -73.3852
+  heading_deg: 90.0
+
+sector_checkpoints:
+  - distance_m: 800.0
+    name: "S1 end (after Big Bend)"
+  - distance_m: 1700.0
+    name: "S2 end (after West Bend)"
+
+corner_names:
+  - "T1 - Big Bend"
+  - "T2 - Left-Hander"
+  - "T3 - The Esses (right)"
+  - "T4 - The Esses (left)"
+  - "T5 - No-Name Straight"
+  - "T6 - The Uphill"
+  - "T7 - West Bend"
+  - "T8 - Diving Turn"
