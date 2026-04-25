@@ -1,0 +1,37 @@
+id: "br.abrupt_release.load_transfer_mismatch"
+version: 1
+category: technique
+subcategory: abrupt_release
+difficulty: beginner
+
+detection:
+  signal: brake_release_rate
+  condition: "brake_release_rate > reference_brake_release_rate * 1.5"
+  context:
+    must_have_channels: ["brake", "speed", "steering_angle"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 3
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 1.5x = low, 2.0x = medium, 2.5x = high"
+
+explanation_template:
+  beginner: "You release the brake too quickly into {{corner}}. The car snaps weight forward — you'll feel the front go light at the apex."
+  intermediate: "Brake release is {{delta_pct}}% above reference rate on {{corner}}. Abrupt release unloads the front tires at turn-in; trail off the brake more gradually."
+  advanced: "Release rate {{delta_pct}}% above reference on {{corner}} — load transfer derivative spikes through the rotation phase, costing front grip when steering loads peak."
+
+prescription:
+  drill_template_id: "drill.smooth_trail_brake_release"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "brake_release_rate"
+    comparison: "lte"
+    target_pct: 1.2
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: false
+    caveats: ["sim brake pedals are typically more linear; real-world brake feel makes smooth release more intuitive but harder to measure"]

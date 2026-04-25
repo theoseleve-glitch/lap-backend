@@ -107,6 +107,26 @@ _FEATURE_LIST: tuple[FeatureSpec, ...] = (
         ),
         kind=FeatureKind.REFERENCE,
     ),
+    # T190 — brake-release rate (derivative signal; first
+    # non-snapshot feature in the namespace).
+    FeatureSpec(
+        name="brake_release_rate",
+        unit="g/s",
+        description=(
+            "Rate at which longitudinal deceleration drops as "
+            "the brake pedal is released. High values = abrupt "
+            "release, low values = smooth trail-brake."
+        ),
+        kind=FeatureKind.PIPELINE,
+    ),
+    FeatureSpec(
+        name="reference_brake_release_rate",
+        unit="g/s",
+        description=(
+            "Benchmark brake-release rate for the corner."
+        ),
+        kind=FeatureKind.REFERENCE,
+    ),
 )
 
 FEATURES: dict[str, FeatureSpec] = {f.name: f for f in _FEATURE_LIST}
