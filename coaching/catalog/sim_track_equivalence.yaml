@@ -1,0 +1,50 @@
+# Sim↔real track equivalence table (ADR-014, T137).
+#
+# Maps sim-specific track identifiers (iRacing track_id, ACC slug,
+# AC folder name…) to the canonical `master_track_id` defined by
+# the YAMLs in `coaching/catalog/tracks/`. Same physical circuit,
+# multiple sims, one master id.
+#
+# Provider conventions:
+#   iracing - iRacing internal track_id (integer, stringified)
+#   acc     - ACC `Track` enum slug (e.g. "spa", "monza")
+#   ac      - Assetto Corsa folder name under `content/tracks/`
+#   rf2     - rFactor 2 mod folder slug
+#   real    - real-world capture (rare; usually inferred from GPS)
+#
+# Seed values for sim_track_id are illustrative — the lookup
+# infrastructure works regardless of whether the specific iRacing
+# track_id is byte-perfect; admin can update as canonical sources
+# (iRacing data export, ACC SDK) become available.
+
+pairs:
+  - provider: iracing
+    sim_track_id: "18"
+    master_track_id: 019dcacb-7000-7000-8000-000000000001  # sebring
+  - provider: iracing
+    sim_track_id: "143"
+    master_track_id: 019dcacb-7000-7000-8000-000000000002  # silverstone
+  - provider: iracing
+    sim_track_id: "266"
+    master_track_id: 019dcacb-7000-7000-8000-000000000003  # nurburgring
+  - provider: iracing
+    sim_track_id: "252"
+    master_track_id: 019dcacb-7000-7000-8000-000000000004  # red-bull-ring
+  - provider: iracing
+    sim_track_id: "88"
+    master_track_id: 019dcacb-7000-7000-8000-000000000005  # laguna-seca
+  - provider: iracing
+    sim_track_id: "3"
+    master_track_id: 019dcacb-7000-7000-8000-000000000006  # lime-rock
+  - provider: ac
+    sim_track_id: ledenon
+    master_track_id: 019dcacb-7000-7000-8000-000000000007  # ledenon
+  - provider: iracing
+    sim_track_id: "268"
+    master_track_id: 019dcacb-7000-7000-8000-000000000008  # charlotte roval
+  - provider: acc
+    sim_track_id: spa
+    master_track_id: 019dcacb-7000-7000-8000-000000000009  # spa-francorchamps
+  - provider: acc
+    sim_track_id: monza
+    master_track_id: 019dcacb-7000-7000-8000-00000000000a  # monza
