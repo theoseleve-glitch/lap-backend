@@ -312,3 +312,28 @@ class DriverBenchmarkProfile(Base):
         JSON().with_variant(JSONB(), "postgresql"), default=dict
     )
     archetype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class DriverReadinessState(Base):
+    __tablename__ = "driver_readiness_states"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    target_event: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    readiness_score: Mapped[float] = mapped_column(Float)
+    volume_input: Mapped[float] = mapped_column(Float)
+    quality_input: Mapped[float] = mapped_column(Float)
+    recency_input: Mapped[float] = mapped_column(Float)
+    consistency_input: Mapped[float] = mapped_column(Float)
+    unresolved_weaknesses_input: Mapped[float] = mapped_column(Float)
+    familiarity_input: Mapped[float] = mapped_column(Float)
+    event_pressure_input: Mapped[float] = mapped_column(Float)
+    recovery_input: Mapped[float] = mapped_column(Float)
+    limiting_factor: Mapped[str] = mapped_column(String(64))
+    likely_gain_area: Mapped[str] = mapped_column(String(64))
+    recommended_sessions_before_event: Mapped[int] = mapped_column(Integer)
