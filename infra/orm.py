@@ -195,7 +195,11 @@ class ActionPrescription(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    outcome_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    outcome_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("action_outcomes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 class ActionOutcome(Base):
@@ -293,7 +297,11 @@ class TransferLink(Base):
     non_transferred_skills: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB(), "postgresql"), default=list
     )
-    generated_report_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    generated_report_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("coaching_insights.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 class DriverBenchmarkProfile(Base):
