@@ -12,6 +12,7 @@ the UI / SSE consumer sees what broke.
 
 import asyncio
 import os
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +23,8 @@ from sqlalchemy import select
 from infra.db import make_engine, make_session_factory
 from infra.orm import Session as SessionRow
 from infra.orm import SessionRecord as SessionRecordRow
+from infra.pipeline import run_session_pipeline
+from infra.storage import LocalBlobStore
 
 logger = structlog.get_logger()
 
@@ -223,19 +226,15 @@ def process_session_ingest(session_id_str: str) -> str:
         "process_session_ingest.marked_processing",
         session_id=session_id_str,
     )
-    # T122: persist a SessionRecord row at the end of processing.
-    # Payload starts empty — T124/T125 integration tests will pin a
-    # richer shape once lap detection / metrics / data quality flow
-    # end-to-end through the worker.
-    asyncio.run(_persist_session_record(session_id, payload={}))
+    # T124: full pipeline — fetch chunks, parse, detect laps, compute
+    # metrics + data quality, persist Lap + SessionRecord rows, mark
+    # ready. Worker constructs its own blob store from env vars since
+    # it doesn't share the FastAPI dep tree.
+    storage_root = Path(os.environ.get("STORAGE_ROOT", "./data"))
+    blob_store = LocalBlobStore(storage_root)
+    asyncio.run(run_session_pipeline(session_id, blob_store))
     logger.info(
-        "process_session_ingest.session_record_persisted",
+        "process_session_ingest.pipeline_complete",
         session_id=session_id_str,
-    )
-    # T123: final transition to "ready" so GET /sessions/:id reports
-    # the work is done.
-    asyncio.run(_mark_ready(session_id))
-    logger.info(
-        "process_session_ingest.marked_ready", session_id=session_id_str
     )
     return session_id_str
