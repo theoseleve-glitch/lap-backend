@@ -1,0 +1,58 @@
+# Synthetic Silverstone session for an amateur driver. Used by
+# T199. Designed to fire a different rule set than Sebring (T198)
+# so the integration tests show the library distinguishes track
+# profiles rather than producing the same insights everywhere.
+#
+# Profile: amateur at Silverstone Grand Prix layout. Smooth
+# surface (no Sebring-style bumps), high-speed sweepers
+# (Maggots/Becketts) and long straights (Hangar Straight into
+# Stowe, Wellington into Vale chicane). Common mistakes:
+# - Late braking into Stowe — apex speed deficit
+# - Over-braking into Vale chicane — residual brake at apex
+#   because the driver scrubs more than needed
+# - Trail brake released too early into Maggots/Becketts —
+#   needs to carry brake to load front for high-speed rotation
+#
+# Designed firing set: T188 + T194 + T196 (timing + over-braking
+# + trail-brake-early). Sebring fires T188+T192+T197 — overlap
+# is just T188 (universal symptom), the other two differ.
+
+# T188 — late braking → fires (Stowe, classic deficit)
+apex_speed: 90.0
+reference_apex_speed: 100.0
+
+# T189 — early braking → does NOT fire
+entry_speed: 96.0
+reference_entry_speed: 100.0
+
+# T190 — abrupt release → does NOT fire (smooth release)
+brake_release_rate: 2.5
+reference_brake_release_rate: 2.0
+
+# T191 — inconsistent pressure → does NOT fire (clean repeats)
+brake_pressure_cov_in_sector: 0.07
+
+# T192 — lockup pattern → does NOT fire (smooth surface)
+lockup_event_count: 1
+
+# T193 — cold brakes → does NOT fire
+first_lap_brake_distance_ratio: 1.06
+
+# T194 — over-braking mid-corner → fires (Vale chicane)
+mid_corner_brake_pressure_pct: 0.27
+
+# T195 — balance shift → does NOT fire
+rear_front_slip_ratio_entry: 1.15
+
+# T196 — trail brake released too early → fires (Maggots/Becketts)
+brake_release_position_pct: 0.52
+
+# T197 — threshold not reached → does NOT fire (well-driven)
+peak_decel_grip_ratio: 0.91
+
+# Template variables for fired rules' explanations.
+delta_kmh: 10
+corner: "Stowe"
+release_ms: 280
+residual_pct: 27
+release_pct: 52
