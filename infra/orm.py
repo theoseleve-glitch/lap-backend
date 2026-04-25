@@ -337,3 +337,87 @@ class DriverReadinessState(Base):
     limiting_factor: Mapped[str] = mapped_column(String(64))
     likely_gain_area: Mapped[str] = mapped_column(String(64))
     recommended_sessions_before_event: Mapped[int] = mapped_column(Integer)
+
+
+class TrackLayout(Base):
+    __tablename__ = "track_layouts"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_provider",
+            "name",
+            "layout_name",
+            name="uq_track_layouts_provider_name_layout",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    source_provider: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(128))
+    layout_name: Mapped[str] = mapped_column(String(64))
+    start_finish_lat: Mapped[float] = mapped_column(Float)
+    start_finish_lon: Mapped[float] = mapped_column(Float)
+    start_finish_heading_deg: Mapped[float] = mapped_column(Float)
+    sector_checkpoints: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    corner_names: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    master_track_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+
+
+class CarModel(Base):
+    __tablename__ = "car_models"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_provider", "name", name="uq_car_models_provider_name"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    source_provider: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(128))
+    car_class: Mapped[str] = mapped_column(String(32), index=True)
+    master_car_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+
+
+class TrackEquivalence(Base):
+    __tablename__ = "track_equivalences"
+    __table_args__ = (
+        UniqueConstraint(
+            "track_a_id", "track_b_id", name="uq_track_equivalences_pair"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    track_a_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("track_layouts.id", ondelete="CASCADE"), index=True
+    )
+    track_b_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("track_layouts.id", ondelete="CASCADE"), index=True
+    )
+    confidence: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class CarEquivalence(Base):
+    __tablename__ = "car_equivalences"
+    __table_args__ = (
+        UniqueConstraint(
+            "car_a_id", "car_b_id", name="uq_car_equivalences_pair"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    car_a_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("car_models.id", ondelete="CASCADE"), index=True
+    )
+    car_b_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("car_models.id", ondelete="CASCADE"), index=True
+    )
+    confidence: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
