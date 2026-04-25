@@ -1,0 +1,33 @@
+# WeatherTech Raceway Laguna Seca — full course (Salinas, CA).
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: laguna-seca
+layout_name: full-course
+length_m: 3602.0
+master_track_id: 019dcacb-7000-7000-8000-000000000005
+
+start_finish:
+  lat: 36.5847
+  lon: -121.7536
+  heading_deg: 290.0
+
+sector_checkpoints:
+  - distance_m: 1100.0
+    name: "S1 end (after Andretti Hairpin)"
+  - distance_m: 2400.0
+    name: "S2 end (after the Corkscrew)"
+
+corner_names:
+  - "T1"
+  - "T2 - Andretti Hairpin"
+  - "T3"
+  - "T4"
+  - "T5"
+  - "T6"
+  - "T7"
+  - "T8 - The Corkscrew (entry)"
+  - "T8a - The Corkscrew (exit)"
+  - "T9 - Rainey Curve"
+  - "T10"
+  - "T11"
