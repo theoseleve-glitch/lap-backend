@@ -1,0 +1,58 @@
+# Synthetic Sebring session for an amateur driver, used by T198.
+# Stored as a feature dict (the inputs rules read) rather than raw
+# telemetry — the rules engine doesn't care where features came
+# from, just that they're numbers in the context.
+#
+# Profile: amateur at Sebring 12-hour layout. Bumpy surface,
+# long straights into hard braking zones at T1 and T17. Common
+# mistakes: braking too late on the long straight (apex too
+# slow), lockups on the surface bumps under threshold pedal,
+# cautious peak deceleration because the bumps make threshold
+# braking feel scary.
+#
+# Designed to fire at least 3 of the 10 braking rules with
+# realistic values; explicit values are tuned so the test can
+# also point to which rules are *not* firing (e.g., consistency
+# is fine, balance is fine, trail-brake position is fine).
+
+# T188 — late braking → fires (apex 88% of reference < 93%)
+apex_speed: 88.0
+reference_apex_speed: 100.0
+
+# T189 — early braking → does NOT fire (entry close to ref)
+entry_speed: 95.0
+reference_entry_speed: 100.0
+
+# T190 — abrupt release → does NOT fire (release rate within band)
+brake_release_rate: 2.4
+reference_brake_release_rate: 2.0
+
+# T191 — inconsistent pressure → does NOT fire (low CoV)
+brake_pressure_cov_in_sector: 0.08
+
+# T192 — lockup pattern → fires (5 events on the bumpy surface)
+lockup_event_count: 5
+
+# T193 — cold brakes → does NOT fire (warmed up properly)
+first_lap_brake_distance_ratio: 1.04
+
+# T194 — over-braking mid-corner → does NOT fire (apex pressure low)
+mid_corner_brake_pressure_pct: 0.12
+
+# T195 — balance shift → does NOT fire (front/rear balanced)
+rear_front_slip_ratio_entry: 1.20
+
+# T196 — trail brake released too early → does NOT fire (held to apex)
+brake_release_position_pct: 0.82
+
+# T197 — threshold braking not reached → fires (cautious 78%)
+peak_decel_grip_ratio: 0.78
+
+# Template variables for the firing rules' explanation strings.
+# Without these the runner raises InsightRenderError when
+# substituting `{{var}}`.
+delta_kmh: 12
+corner: "Turn 1"
+release_ms: 240
+count: 5
+usage_pct: 78
