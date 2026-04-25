@@ -98,4 +98,16 @@ class PrescriptionRepo:
             return None
         pres.status = status
         await self._db.commit()
+        # T172: emit `prescription_accepted` only on the transition
+        # to accepted. Other terminal states (skipped, expired) have
+        # their own funnel concerns and shouldn't pollute this event.
+        if self._posthog is not None and status == "accepted":
+            self._posthog.capture(
+                event="prescription_accepted",
+                distinct_id=str(pres.driver_id),
+                properties={
+                    "prescription_id": str(pres.id),
+                    "drill_template_id": pres.drill_template_id,
+                },
+            )
         return pres

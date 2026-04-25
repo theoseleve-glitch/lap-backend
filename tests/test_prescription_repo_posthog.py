@@ -109,3 +109,72 @@ async def test_create_without_posthog_client_does_not_raise(
             assert pres.id is not None
     finally:
         await engine.dispose()
+
+
+# T172 — `prescription_accepted` fires from update_status when the
+# new status is "accepted". Other transitions stay silent.
+
+
+async def test_update_status_to_accepted_emits_event(
+    upgraded_db_url: str,
+) -> None:
+    engine = make_engine(upgraded_db_url)
+    try:
+        session_factory = make_session_factory(engine)
+        async with session_factory() as db:
+            driver = await _seed_driver(db)
+            posthog = RecordingPosthog()
+            repo = PrescriptionRepo(db, posthog_client=posthog)
+            pres = await repo.create(**_create_kwargs(driver.id))
+            posthog.events.clear()  # drop the prescription_created entry
+
+            updated = await repo.update_status(pres.id, "accepted")
+
+            assert updated is not None
+            assert len(posthog.events) == 1
+            event, kwargs = posthog.events[0]
+            assert event == "prescription_accepted"
+            assert kwargs["distinct_id"] == str(driver.id)
+            props = kwargs["properties"]
+            assert props["prescription_id"] == str(pres.id)
+            assert props["drill_template_id"] == "br.late_braking.v1"
+    finally:
+        await engine.dispose()
+
+
+async def test_update_status_to_skipped_does_not_emit_event(
+    upgraded_db_url: str,
+) -> None:
+    engine = make_engine(upgraded_db_url)
+    try:
+        session_factory = make_session_factory(engine)
+        async with session_factory() as db:
+            driver = await _seed_driver(db)
+            posthog = RecordingPosthog()
+            repo = PrescriptionRepo(db, posthog_client=posthog)
+            pres = await repo.create(**_create_kwargs(driver.id))
+            posthog.events.clear()
+
+            await repo.update_status(pres.id, "skipped")
+            assert posthog.events == []
+    finally:
+        await engine.dispose()
+
+
+async def test_update_status_unknown_id_does_not_emit_event(
+    upgraded_db_url: str,
+) -> None:
+    engine = make_engine(upgraded_db_url)
+    try:
+        session_factory = make_session_factory(engine)
+        async with session_factory() as db:
+            await _seed_driver(db)
+            posthog = RecordingPosthog()
+            repo = PrescriptionRepo(db, posthog_client=posthog)
+
+            result = await repo.update_status(uuid6.uuid7(), "accepted")
+            assert result is None
+            # No row found → no transition happened → no event.
+            assert posthog.events == []
+    finally:
+        await engine.dispose()
