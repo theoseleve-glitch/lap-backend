@@ -339,6 +339,37 @@ class DriverReadinessState(Base):
     recommended_sessions_before_event: Mapped[int] = mapped_column(Integer)
 
 
+class CoachingInsight(Base):
+    __tablename__ = "coaching_insights"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), index=True
+    )
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    rule_id: Mapped[str] = mapped_column(String(128))
+    rule_version: Mapped[str] = mapped_column(String(32))
+    observation: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list
+    )
+    likely_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    severity: Mapped[str] = mapped_column(String(16))
+    confidence: Mapped[float] = mapped_column(Float)
+    corner_tag: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    suggested_prescription_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("action_prescriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    flagged_false_positive: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
+
+
 class TrackLayout(Base):
     __tablename__ = "track_layouts"
     __table_args__ = (
