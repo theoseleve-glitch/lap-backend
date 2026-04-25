@@ -1,0 +1,40 @@
+# Circuit de Spa-Francorchamps — Grand Prix layout (F1 / WEC,
+# post-2022 safety reprofiling). Stavelot, Belgium.
+# Source: lap-coach-catalog (curated). ADR-014: server owns catalog.
+
+source_provider: lap-coach-catalog
+name: spa-francorchamps
+layout_name: grand-prix
+length_m: 7004.0
+master_track_id: 019dcacb-7000-7000-8000-000000000009
+
+start_finish:
+  lat: 50.4370
+  lon: 5.9714
+  heading_deg: 190.0
+
+sector_checkpoints:
+  - distance_m: 1660.0
+    name: "S1 end (after Les Combes)"
+  - distance_m: 5230.0
+    name: "S2 end (after Blanchimont)"
+
+corner_names:
+  - "T1 - La Source"
+  - "T2 - Eau Rouge"
+  - "T3 - Raidillon"
+  - "T4 - Kemmel Straight kink"
+  - "T5 - Les Combes (right)"
+  - "T6 - Les Combes (left)"
+  - "T7 - Malmedy"
+  - "T8 - Rivage"
+  - "T9 - No Name (left)"
+  - "T10 - Pouhon"
+  - "T11 - Fagnes (right)"
+  - "T12 - Fagnes (left)"
+  - "T13 - Stavelot"
+  - "T14 - Paul Frère"
+  - "T15 - Blanchimont"
+  - "T16 - Bus Stop Chicane (entry)"
+  - "T17 - Bus Stop Chicane (exit)"
+  - "T18 - Final corner"
