@@ -10,6 +10,7 @@ from uuid import UUID
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,15 @@ from app.logging import logger
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+
+class RefundRequest(BaseModel):
+    """Operator-issued refund. `amount` (in the smallest currency unit,
+    e.g. cents) is optional — omitting it asks Stripe for a full
+    refund of the original charge."""
+
+    charge_id: str = Field(..., min_length=1)
+    amount: int | None = Field(default=None, ge=1)
 
 
 def _require_admin(user: UserRow) -> None:
@@ -74,3 +84,34 @@ async def force_sync_billing_status(
             user_id=str(target.id),
         )
     return {"subscription_status": target.subscription_status}
+
+
+@router.post("/billing/refund")
+async def refund_charge(
+    body: RefundRequest,
+    caller: Annotated[UserRow, Depends(get_current_user)],
+) -> dict[str, str | int]:
+    """Issue a Stripe refund against a charge. Full refund by default;
+    pass `amount` (smallest currency unit) for a partial. The
+    endpoint is a thin relay — no DB writes, no user resolution."""
+    _require_admin(caller)
+    kwargs: dict[str, Any] = {"charge": body.charge_id}
+    if body.amount is not None:
+        kwargs["amount"] = body.amount
+    refund: Any = stripe.Refund.create(**kwargs)
+    refund_id = str(refund.get("id") or "")
+    refund_status = str(refund.get("status") or "")
+    refund_amount = int(refund.get("amount") or 0)
+    logger.info(
+        "admin_billing_refund_issued",
+        admin_user_id=str(caller.id),
+        charge_id=body.charge_id,
+        refund_id=refund_id,
+        amount=refund_amount,
+        status=refund_status,
+    )
+    return {
+        "refund_id": refund_id,
+        "status": refund_status,
+        "amount": refund_amount,
+    }
