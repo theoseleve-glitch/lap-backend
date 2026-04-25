@@ -5,11 +5,18 @@ import uuid6
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from infra.orm import WeaknessEpisode
+from infra.posthog import PosthogClientProtocol
 
 
 class WeaknessRepo:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        *,
+        posthog_client: PosthogClientProtocol | None = None,
+    ) -> None:
         self._db = db
+        self._posthog = posthog_client
 
     async def open(
         self,
@@ -60,4 +67,18 @@ class WeaknessRepo:
         episode.status = "resolved"
         episode.resolved_at = resolved_at
         await self._db.commit()
+        # T173: emit `weakness_resolved` after the resolution is
+        # durable. Closes the funnel started by T171's
+        # `prescription_created` for this episode's drill template.
+        if self._posthog is not None:
+            self._posthog.capture(
+                event="weakness_resolved",
+                distinct_id=str(episode.driver_id),
+                properties={
+                    "episode_id": str(episode.id),
+                    "category": episode.category,
+                    "subcategory": episode.subcategory,
+                    "library_rule_id": episode.library_rule_id,
+                },
+            )
         return episode
