@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import Config
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
+from infra.idempotency_cache import IdempotencyCache
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
 
@@ -42,6 +43,12 @@ def get_jwks_client() -> ClerkJwksClient:
 def get_pairing_store() -> PairingStoreProtocol:
     client = redis.Redis.from_url(get_config().redis_url)
     return RedisPairingStore(client)
+
+
+@lru_cache
+def get_idempotency_cache() -> IdempotencyCache:
+    client = redis.Redis.from_url(get_config().redis_url)
+    return IdempotencyCache(client)
 
 
 _UNAUTHORIZED = HTTPException(

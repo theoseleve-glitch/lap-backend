@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Any
 
+import fakeredis
 import httpx
 import jwt
 import pytest
@@ -16,10 +17,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alembic import command
-from app.deps import get_db, get_jwks_client
+from app.deps import get_db, get_idempotency_cache, get_jwks_client
 from app.main import app
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
+from infra.idempotency_cache import IdempotencyCache
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
@@ -79,8 +81,11 @@ def configured_app(
             "https://test.clerk", transport=httpx.MockTransport(handler)
         )
 
+    cache = IdempotencyCache(fakeredis.FakeRedis(), ttl_seconds=86400)
+
     app.dependency_overrides[get_db] = fake_get_db
     app.dependency_overrides[get_jwks_client] = fake_jwks_client
+    app.dependency_overrides[get_idempotency_cache] = lambda: cache
     try:
         yield {"keys": keys}
     finally:
