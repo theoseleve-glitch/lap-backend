@@ -8,6 +8,11 @@ class Config(BaseSettings):
     clerk_secret: SecretStr
     clerk_issuer: str = "https://clerk.example.invalid"
     clerk_webhook_secret: SecretStr = SecretStr("")
+    # T204 — HMAC secret for signing the coaching rules bundle.
+    # Empty in dev/CI → bundle endpoint returns 503 rather than
+    # ship an unsigned payload. Deploys must set this so clients
+    # can verify integrity with the same secret.
+    coaching_bundle_signing_secret: SecretStr = SecretStr("")
     stripe_secret: SecretStr
     stripe_webhook_secret: SecretStr = SecretStr("")
     # Stripe Price IDs — created in the Stripe dashboard. Empty in
