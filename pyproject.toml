@@ -13,6 +13,7 @@ dependencies = [
     "lap-schemas",
     "pydantic-settings>=2.0",
     "pyjwt[crypto]>=2.9",
+    "redis>=5.0",
     "sqlalchemy[asyncio]>=2.0",
     "structlog>=24.0",
     "uvicorn>=0.30",
@@ -27,6 +28,7 @@ lap-schemas = { path = "../lap-schemas/python", editable = true }
 [dependency-groups]
 dev = [
     "aiosqlite>=0.19",
+    "fakeredis>=2.20",
     "ruff>=0.15",
     "mypy>=1.19",
     "pre-commit>=4.0",

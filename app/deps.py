@@ -3,6 +3,7 @@ from functools import lru_cache
 from typing import Annotated, Any
 
 import jwt
+import redis
 import uuid6
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -12,7 +13,7 @@ from app.config import Config
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
 from infra.orm import User
-from infra.pairing_store import PairingStore
+from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
 
 
 @lru_cache
@@ -38,8 +39,9 @@ def get_jwks_client() -> ClerkJwksClient:
 
 
 @lru_cache
-def get_pairing_store() -> PairingStore:
-    return PairingStore()
+def get_pairing_store() -> PairingStoreProtocol:
+    client = redis.Redis.from_url(get_config().redis_url)
+    return RedisPairingStore(client)
 
 
 _UNAUTHORIZED = HTTPException(
