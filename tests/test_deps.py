@@ -27,11 +27,6 @@ def test_get_config_returns_cached_config(monkeypatch: pytest.MonkeyPatch) -> No
     get_config.cache_clear()
 
 
-async def test_get_db_is_stub() -> None:
-    with pytest.raises(NotImplementedError):
-        await get_db()
-
-
 async def test_get_current_user_is_stub() -> None:
     with pytest.raises(NotImplementedError):
         await get_current_user()
