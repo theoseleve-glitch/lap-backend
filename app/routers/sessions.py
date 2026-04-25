@@ -15,9 +15,17 @@ from fastapi import (
 )
 from lap_schemas.v1 import SessionIngestAccepted, SessionManifest
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_blob_store, get_current_user, get_idempotency_cache
+from app.deps import (
+    get_blob_store,
+    get_current_user,
+    get_db,
+    get_idempotency_cache,
+)
 from infra.idempotency_cache import IdempotencyCache
+from infra.orm import Session as SessionRow
+from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
 from infra.storage import BlobStoreProtocol
 
@@ -34,6 +42,7 @@ async def ingest_session(
     user: Annotated[UserRow, Depends(get_current_user)],
     cache: Annotated[IdempotencyCache, Depends(get_idempotency_cache)],
     blob_store: Annotated[BlobStoreProtocol, Depends(get_blob_store)],
+    db: Annotated[AsyncSession, Depends(get_db)],
     chunks: Annotated[list[UploadFile] | None, File()] = None,
     idempotency_key: Annotated[
         str | None, Header(alias="idempotency-key")
@@ -74,11 +83,12 @@ async def ingest_session(
             detail="manifest_invalid",
         ) from exc
 
-    session_id = str(parsed_manifest.session_id)
+    session_id = parsed_manifest.session_id
     expected_checksums = parsed_manifest.telemetry_checksums
     # Two-pass: read + verify ALL chunks before persisting any. A
-    # mid-loop checksum failure must not leave half the upload on disk.
-    verified: list[tuple[str, bytes]] = []
+    # mid-loop checksum failure must not leave half the upload on disk
+    # nor any partial DB rows.
+    verified: list[tuple[str, bytes, str]] = []
     for chunk in chunks or []:
         filename = chunk.filename or ""
         if (
@@ -92,16 +102,42 @@ async def ingest_session(
                 detail="chunk_filename_invalid",
             )
         payload = await chunk.read()
-        if filename in expected_checksums:
-            actual = f"sha256:{hashlib.sha256(payload).hexdigest()}"
-            if actual != expected_checksums[filename]:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail="chunk_checksum_mismatch",
-                )
-        verified.append((filename, payload))
-    for filename, payload in verified:
-        blob_store.put(f"{session_id}/{filename}", payload)
+        digest_hex = hashlib.sha256(payload).hexdigest()
+        if (
+            filename in expected_checksums
+            and f"sha256:{digest_hex}" != expected_checksums[filename]
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="chunk_checksum_mismatch",
+            )
+        verified.append((filename, payload, digest_hex))
+
+    # T102: persist a Session row (status="uploaded") and one
+    # TelemetryArtifact row per chunk. Manifest is stored as JSON so
+    # downstream Celery (T103) can read it without re-parsing the
+    # multipart body.
+    session_row = SessionRow(
+        id=session_id,
+        driver_id=parsed_manifest.driver_id,
+        manifest=parsed_manifest.model_dump(mode="json"),
+        status="uploaded",
+    )
+    db.add(session_row)
+    session_id_str = str(session_id)
+    for filename, payload, digest_hex in verified:
+        db.add(
+            TelemetryArtifact(
+                session_id=session_id,
+                s3_key=f"{session_id_str}/{filename}",
+                sha256=digest_hex,
+                size_bytes=len(payload),
+            )
+        )
+    await db.commit()
+
+    for filename, payload, _ in verified:
+        blob_store.put(f"{session_id_str}/{filename}", payload)
 
     response = SessionIngestAccepted(status="accepted")
     cache.put(idempotency_key, response.model_dump_json().encode())
