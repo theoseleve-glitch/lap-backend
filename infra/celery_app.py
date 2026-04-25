@@ -18,6 +18,7 @@ from uuid import UUID
 
 import structlog
 from celery import Celery, Task
+from celery.schedules import crontab
 from sqlalchemy import select
 
 from infra.db import make_engine, make_session_factory
@@ -40,6 +41,16 @@ def build_celery_app() -> Celery:
 
 
 celery_app = build_celery_app()
+
+# T179 — weekly KPI report posts to Slack every Monday at 09:00 UTC.
+# The task body lives below; beat triggers it on the cron schedule.
+celery_app.conf.beat_schedule = {
+    "weekly-kpi-report": {
+        "task": "infra.celery_app.weekly_kpi_report",
+        "schedule": crontab(hour=9, minute=0, day_of_week=1),
+    },
+}
+celery_app.conf.timezone = "UTC"
 
 
 @celery_app.task(name="infra.celery_app.ping")  # type: ignore[untyped-decorator]
@@ -238,3 +249,43 @@ def process_session_ingest(session_id_str: str) -> str:
         session_id=session_id_str,
     )
     return session_id_str
+
+
+async def _send_weekly_kpi_report() -> None:
+    """T179 cron body: compute and post the weekly KPI digest.
+
+    The Slack channel and bot token come from env vars so the worker
+    can be configured without code changes. If `SLACK_BOT_TOKEN` is
+    absent we log and bail rather than crash the beat scheduler — a
+    missing token is an ops issue, not a worker outage.
+    """
+    from datetime import UTC, datetime
+
+    from infra.kpi_report import send_weekly_kpi_report
+    from infra.slack import make_slack_poster
+
+    channel = os.environ.get("SLACK_KPI_CHANNEL", "#ops")
+    token = os.environ.get("SLACK_BOT_TOKEN", "")
+    if not token:
+        logger.warning("weekly_kpi_report.no_slack_token")
+        return
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            await send_weekly_kpi_report(
+                db,
+                make_slack_poster(token),
+                channel=channel,
+                now=datetime.now(UTC),
+            )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.weekly_kpi_report")  # type: ignore[untyped-decorator]
+def weekly_kpi_report() -> str:
+    """Beat-triggered Monday 09:00 UTC. Posts the weekly digest."""
+    asyncio.run(_send_weekly_kpi_report())
+    return "ok"
