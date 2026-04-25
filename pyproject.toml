@@ -15,6 +15,7 @@ dependencies = [
     "lap-schemas",
     "pydantic-settings>=2.0",
     "posthog>=3.7",
+    "prometheus-client>=0.20",
     "pyjwt[crypto]>=2.9",
     "python-multipart>=0.0.20",
     "pyyaml>=6.0",

@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.logging import configure_logging, logger
@@ -88,3 +89,15 @@ async def healthz() -> dict[str, str]:
 @app.get("/readyz")
 async def readyz() -> dict[str, str]:
     return {"status": "ready"}
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    # T175 — Prometheus exposition. Mounted at root (not /api/v1)
+    # so standard scrape configs work without per-app relabeling.
+    # T176/T177 add custom counters and histograms; this just wires
+    # the default registry (process collector + future user metrics).
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
