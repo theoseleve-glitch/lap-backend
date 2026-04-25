@@ -17,6 +17,7 @@ from infra.idempotency_cache import IdempotencyCache
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
 from infra.storage import BlobStoreProtocol, LocalBlobStore
+from infra.task_dispatcher import InMemoryTaskDispatcher, TaskDispatcherProtocol
 
 
 @lru_cache
@@ -56,6 +57,13 @@ def get_idempotency_cache() -> IdempotencyCache:
 @lru_cache
 def get_blob_store() -> BlobStoreProtocol:
     return LocalBlobStore(Path(get_config().storage_root))
+
+
+@lru_cache
+def get_task_dispatcher() -> TaskDispatcherProtocol:
+    # T103: in-memory placeholder; T107 swaps to a Celery-backed
+    # dispatcher behind the same protocol.
+    return InMemoryTaskDispatcher()
 
 
 _UNAUTHORIZED = HTTPException(

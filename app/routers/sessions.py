@@ -22,12 +22,14 @@ from app.deps import (
     get_current_user,
     get_db,
     get_idempotency_cache,
+    get_task_dispatcher,
 )
 from infra.idempotency_cache import IdempotencyCache
 from infra.orm import Session as SessionRow
 from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
 from infra.storage import BlobStoreProtocol
+from infra.task_dispatcher import TaskDispatcherProtocol
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
@@ -43,6 +45,9 @@ async def ingest_session(
     cache: Annotated[IdempotencyCache, Depends(get_idempotency_cache)],
     blob_store: Annotated[BlobStoreProtocol, Depends(get_blob_store)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    task_dispatcher: Annotated[
+        TaskDispatcherProtocol, Depends(get_task_dispatcher)
+    ],
     chunks: Annotated[list[UploadFile] | None, File()] = None,
     idempotency_key: Annotated[
         str | None, Header(alias="idempotency-key")
@@ -138,6 +143,10 @@ async def ingest_session(
 
     for filename, payload, _ in verified:
         blob_store.put(f"{session_id_str}/{filename}", payload)
+
+    # T103: queue downstream processing. Dispatcher is abstracted so
+    # T107 can swap to a real Celery backend without touching callers.
+    task_dispatcher.dispatch_session_ingest(session_id)
 
     response = SessionIngestAccepted(status="accepted")
     cache.put(idempotency_key, response.model_dump_json().encode())
