@@ -64,6 +64,35 @@ def test_non_empty_dsn_initializes_sdk() -> None:
     assert captured["dsn"] == "https://key@o0.ingest.sentry.io/1"
 
 
+def test_release_is_tagged_with_pyproject_version() -> None:
+    # T168 — Sentry release tag is `lap-backend@<version>`, where
+    # the version is whatever `pyproject.toml` ships with at start.
+    # Ties uploaded events to the deployed git SHA so a regression's
+    # blast radius matches a single deployment.
+    import tomllib
+    from pathlib import Path
+
+    pyproject = (
+        Path(__file__).resolve().parents[1] / "pyproject.toml"
+    )
+    project_meta = tomllib.loads(pyproject.read_text())["project"]
+    expected = f"lap-backend@{project_meta['version']}"
+
+    captured: dict[str, Any] = {}
+
+    def spy(**kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    real_init = sentry_sdk.init
+    sentry_sdk.init = spy  # type: ignore[assignment]
+    try:
+        configure_sentry("https://key@o0.ingest.sentry.io/1")
+    finally:
+        sentry_sdk.init = real_init  # type: ignore[assignment]
+
+    assert captured["release"] == expected
+
+
 def test_traces_sample_rate_is_10_percent() -> None:
     # T167 — keep performance/trace volume sane: only 10% of
     # transactions sampled. Tweak via Sentry dashboard if more
