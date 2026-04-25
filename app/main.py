@@ -8,6 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.logging import configure_logging, logger
 from app.rate_limit import rate_limit_middleware
+from app.routers import catalog as catalog_router
 from app.routers import devices as devices_router
 from app.routers import jobs as jobs_router
 from app.routers import me as me_router
@@ -63,6 +64,7 @@ async def attach_request_id(
     return response
 
 
+app.include_router(catalog_router.router)
 app.include_router(devices_router.router)
 app.include_router(jobs_router.router)
 app.include_router(me_router.router)
