@@ -155,6 +155,7 @@ async def _seed(
     car_gt4 = uuid6.uuid7()
 
     source_id = uuid6.uuid7()
+    cand_same_track = uuid6.uuid7()  # T047 — same TrackLayout as source
     cand_in_window_past = uuid6.uuid7()
     cand_in_window_future = uuid6.uuid7()
     cand_other_track = uuid6.uuid7()
@@ -203,8 +204,12 @@ async def _seed(
                 )
             )
         # Sessions: vary one filter axis at a time relative to source.
+        # cand_same_track shares track_same_a with the source (T047
+        # ranks it ahead of cand_in_window_*, which use track_same_b
+        # but resolve to the same master_track_id).
         sessions = [
             (source_id, track_same_a, car_gt3_a, _T0),
+            (cand_same_track, track_same_a, car_gt3_a, _T0 - timedelta(days=20)),
             (cand_in_window_past, track_same_b, car_gt3_b, _T0 - timedelta(days=30)),
             (cand_in_window_future, track_same_b, car_gt3_b, _T0 + timedelta(days=10)),
             (cand_other_track, track_other, car_gt3_a, _T0),
@@ -228,7 +233,12 @@ async def _seed(
         "user_id": user_id,
         "driver_id": driver_id,
         "source_id": source_id,
-        "expected_candidates": {cand_in_window_past, cand_in_window_future},
+        "expected_candidates": {
+            cand_same_track, cand_in_window_past, cand_in_window_future,
+        },
+        "same_track": cand_same_track,
+        "in_window_past": cand_in_window_past,
+        "in_window_future": cand_in_window_future,
         "other_track": cand_other_track,
         "other_class": cand_other_class,
         "outside_window": cand_outside_window,
@@ -365,3 +375,57 @@ def test_source_missing_track_or_car_returns_422(
         resp = _get(client, configured_app, "alice", seed["source_id"])
     assert resp.status_code == 422
     assert resp.json()["detail"] == "session_unbridgeable"
+
+
+# -- T047: ordering -----------------------------------------------
+
+
+def test_same_track_candidate_ranked_before_same_master_only(
+    configured_app: dict[str, Any],
+) -> None:
+    """T047: same exact TrackLayout id is a stronger pairing signal
+    than merely same master_track_id. Pin the primary sort: same-
+    track candidates come before different-track-same-master ones,
+    regardless of recency.
+
+    cand_same_track is at T0-20d (older than cand_in_window_future
+    at T0+10d) but ranks first because it shares the source's
+    TrackLayout — the recency tiebreaker only applies within a
+    same-track-status group."""
+    seed = asyncio.run(_seed(configured_app["factory"], clerk_user_id="alice"))
+    with TestClient(app) as client:
+        resp = _get(client, configured_app, "alice", seed["source_id"])
+    candidates = [c["session_id"] for c in resp.json()["candidates"]]
+    assert candidates[0] == str(seed["same_track"])
+
+
+def test_within_same_master_only_group_more_recent_first(
+    configured_app: dict[str, Any],
+) -> None:
+    """Secondary sort: among candidates with the *same* same-track
+    status, more recent first. T0+10d ranks ahead of T0-30d."""
+    seed = asyncio.run(_seed(configured_app["factory"], clerk_user_id="alice"))
+    with TestClient(app) as client:
+        resp = _get(client, configured_app, "alice", seed["source_id"])
+    candidates = [c["session_id"] for c in resp.json()["candidates"]]
+    # Position of future vs past among the non-same-track entries.
+    future_idx = candidates.index(str(seed["in_window_future"]))
+    past_idx = candidates.index(str(seed["in_window_past"]))
+    assert future_idx < past_idx
+
+
+def test_full_ordering_same_track_then_recency(
+    configured_app: dict[str, Any],
+) -> None:
+    """End-to-end ordering pin: same-track first, then recency.
+    Three matching candidates → exact order is
+    [same_track, in_window_future, in_window_past]."""
+    seed = asyncio.run(_seed(configured_app["factory"], clerk_user_id="alice"))
+    with TestClient(app) as client:
+        resp = _get(client, configured_app, "alice", seed["source_id"])
+    candidates = [c["session_id"] for c in resp.json()["candidates"]]
+    assert candidates == [
+        str(seed["same_track"]),
+        str(seed["in_window_future"]),
+        str(seed["in_window_past"]),
+    ]

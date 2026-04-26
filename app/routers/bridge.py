@@ -739,19 +739,38 @@ async def suggest_bridge_links(
         ):
             car_class_by_id[cr.id] = cr.car_class
 
-    matches: list[BridgeSuggestLinkCandidate] = []
+    # T047 — primary sort: same TrackLayout id as source ranks
+    # ahead of merely same master_track_id (a sim-vs-sim same-layout
+    # pair is more directly comparable than cross-layout). Secondary
+    # sort: created_at DESC (recency). Composite key — 0 for same-
+    # track lands before 1 (different-track-same-master); negated
+    # timestamp gives DESC.
+    src_track_id = src_track_row.id
+    matched_meta: list[
+        tuple[BridgeSuggestLinkCandidate, UUID, datetime]
+    ] = []
     for sess, t_id, c_id in cand_meta:
         if track_master_by_id.get(t_id) != src_master:
             continue
         if car_class_by_id.get(c_id) != src_class:
             continue
-        matches.append(
-            BridgeSuggestLinkCandidate(
-                session_id=sess.id,
-                created_at=sess.created_at,
+        matched_meta.append(
+            (
+                BridgeSuggestLinkCandidate(
+                    session_id=sess.id,
+                    created_at=sess.created_at,
+                ),
+                t_id,
+                sess.created_at,
             )
         )
+    matched_meta.sort(
+        key=lambda x: (
+            0 if x[1] == src_track_id else 1,
+            -x[2].timestamp(),
+        )
+    )
     return BridgeSuggestLinkList(
         source_session_id=session_id,
-        candidates=tuple(matches),
+        candidates=tuple(c for c, _, _ in matched_meta),
     )
