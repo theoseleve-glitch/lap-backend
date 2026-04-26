@@ -96,6 +96,16 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.weekly_cohort_refresh",
         "schedule": crontab(hour=4, minute=0, day_of_week=1),
     },
+    # T087 (sprint2) — weekly Monday 08:00 UTC iRacing calendar
+    # refresh. iRacing typically rolls weekly schedules on Tuesday
+    # UTC, so Monday gives us the previous week's final state plus
+    # any Tuesday additions on the next fire. Idempotent via
+    # source_id-keyed upsert (T085); a missed Monday catches up
+    # cleanly on the following week.
+    "weekly-iracing-calendar-refresh": {
+        "task": "infra.celery_app.weekly_iracing_calendar_refresh",
+        "schedule": crontab(hour=8, minute=0, day_of_week=1),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -539,3 +549,52 @@ def weekly_cohort_refresh() -> str:
     n = asyncio.run(_run_cohort_refresh())
     logger.info("cohort_refresh.completed", refreshed=n)
     return f"refreshed={n}"
+
+
+def _make_iracing_transport() -> Any:
+    """Hook the test can monkeypatch to inject httpx.MockTransport.
+    Production returns None so httpx connects to the real iRacing
+    API. Lives at module scope so monkeypatch.setattr can replace
+    it without touching the orchestrator's signature."""
+    return None
+
+
+async def _run_iracing_calendar_refresh() -> int | None:
+    """T087 cron body: fetch raw iRacing calendar → parse → upsert.
+    Returns row count on success, or None when the URL env var is
+    unset so the caller can surface "skipped" without raising.
+
+    No-URL case mirrors weekly_kpi_report's no-token pattern: ops
+    misconfig is a logged warning, not a worker outage that
+    poisons beat retries."""
+    from infra.iracing_calendar import refresh_iracing_calendar
+
+    base_url = os.environ.get("IRACING_CALENDAR_URL", "")
+    if not base_url:
+        logger.warning("iracing_calendar_refresh.no_url")
+        return None
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            return await refresh_iracing_calendar(
+                db=db,
+                base_url=base_url,
+                transport=_make_iracing_transport(),
+            )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.weekly_iracing_calendar_refresh")  # type: ignore[untyped-decorator]
+def weekly_iracing_calendar_refresh() -> str:
+    """Beat-triggered weekly Monday 08:00 UTC. Refreshes the
+    iRacing calendar (T085 store + T086 parser + T087 cron)."""
+    result = asyncio.run(_run_iracing_calendar_refresh())
+    if result is None:
+        return "skipped"
+    logger.info(
+        "iracing_calendar_refresh.completed", entries=result
+    )
+    return f"ok={result}"

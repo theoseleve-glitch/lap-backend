@@ -113,32 +113,25 @@ def parse_iracing_calendar_payload(
     return entries
 
 
-async def fetch_and_store_iracing_calendar(
+async def store_iracing_calendar_entries(
     *,
     db: AsyncSession,
-    base_url: str,
-    transport: httpx.AsyncBaseTransport | None = None,
+    entries: list[dict[str, Any]],
     now: datetime | None = None,
 ) -> int:
-    """Fetch the calendar JSON, upsert into iracing_calendar_entries
-    keyed on source_id, return count of rows touched.
+    """Upsert each entry into iracing_calendar_entries keyed on
+    source_id. Returns count of rows touched. Server-stamps
+    fetched_at on every row (not from payload) — distinguishes
+    "iRacing scheduled this on X" from "we last saw it on Y".
 
     Match-then-update keeps the upsert dialect-portable (sqlite +
-    postgres without dialect-specific INSERT...ON CONFLICT). At the
-    iRacing schedule's volume (~hundreds of entries per fetch) the
-    extra round-trips are cheap, and the cron is weekly — not a hot
-    path.
+    postgres without dialect-specific INSERT...ON CONFLICT). The
+    cron is weekly + ~hundreds of entries — extra round-trips are
+    cheap, portability matters more.
     """
     fetched_at = now or datetime.now(UTC)
-    async with httpx.AsyncClient(transport=transport) as client:
-        resp = await client.get(
-            f"{base_url.rstrip('/')}{CALENDAR_PATH}"
-        )
-        resp.raise_for_status()
-        payload: list[dict[str, Any]] = resp.json()
-
     touched = 0
-    for entry in payload:
+    for entry in entries:
         existing = (
             await db.execute(
                 select(IRacingCalendarEntry).where(
@@ -177,3 +170,54 @@ async def fetch_and_store_iracing_calendar(
 
     await db.commit()
     return touched
+
+
+async def fetch_and_store_iracing_calendar(
+    *,
+    db: AsyncSession,
+    base_url: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+    now: datetime | None = None,
+) -> int:
+    """T085 — fetch the calendar JSON (already entry-shaped) and
+    upsert. Kept as the original test-friendly signature; T087's
+    cron uses `refresh_iracing_calendar` instead, which fetches the
+    raw iRacing API shape and parses it (T086) before storing.
+    """
+    async with httpx.AsyncClient(transport=transport) as client:
+        resp = await client.get(
+            f"{base_url.rstrip('/')}{CALENDAR_PATH}"
+        )
+        resp.raise_for_status()
+        entries: list[dict[str, Any]] = resp.json()
+    return await store_iracing_calendar_entries(
+        db=db, entries=entries, now=now,
+    )
+
+
+async def refresh_iracing_calendar(
+    *,
+    db: AsyncSession,
+    base_url: str,
+    transport: httpx.AsyncBaseTransport | None = None,
+    now: datetime | None = None,
+) -> int:
+    """T087 — orchestrator for the weekly cron. Fetches the raw
+    iRacing API response, runs T086's parser, and persists via
+    T085's storage layer. Returns count of rows touched.
+
+    This is the function the Celery task should call — it's the
+    full fetch_raw → parse → store pipeline, while
+    fetch_and_store_iracing_calendar above is the older
+    entry-shape fetcher kept for the T085 tests.
+    """
+    async with httpx.AsyncClient(transport=transport) as client:
+        resp = await client.get(
+            f"{base_url.rstrip('/')}{CALENDAR_PATH}"
+        )
+        resp.raise_for_status()
+        raw: dict[str, Any] = resp.json()
+    entries = parse_iracing_calendar_payload(raw)
+    return await store_iracing_calendar_entries(
+        db=db, entries=entries, now=now,
+    )
