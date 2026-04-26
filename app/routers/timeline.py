@@ -17,12 +17,13 @@ now this app-layer scope is the gate.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from lap_schemas.v1 import TimelineEntry, TimelineResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cursor import decode_cursor, encode_cursor
@@ -45,6 +46,15 @@ async def get_driver_timeline(
     db: Annotated[AsyncSession, Depends(get_db)],
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
+    # T003 — composable filters. All AND together, missing = no-op.
+    # Bare `= None` (no Query wrapper) is enough — FastAPI infers
+    # query-param semantics from the type annotation, and ruff's
+    # B008 doesn't trip on simple defaults.
+    source: str | None = None,
+    track_id: UUID | None = None,
+    car_id: UUID | None = None,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
 ) -> TimelineResponse:
     # T002 — decode caller-bound cursor. None / invalid / forged →
     # treated as "no cursor" (start from the top), failing closed
@@ -74,6 +84,25 @@ async def get_driver_timeline(
     )
     if last_seen_at is not None:
         page_query = page_query.where(SessionRow.created_at < last_seen_at)
+    # T003 — manifest filters via JSON extraction (SQLite + PG both
+    # support `json_extract`; on PG it maps to jsonb_extract_path).
+    # All filters are equality on a single string field.
+    if source is not None:
+        page_query = page_query.where(
+            func.json_extract(SessionRow.manifest, "$.source") == source
+        )
+    if track_id is not None:
+        page_query = page_query.where(
+            func.json_extract(SessionRow.manifest, "$.track_id") == str(track_id)
+        )
+    if car_id is not None:
+        page_query = page_query.where(
+            func.json_extract(SessionRow.manifest, "$.car_id") == str(car_id)
+        )
+    if from_date is not None:
+        page_query = page_query.where(SessionRow.created_at >= from_date)
+    if to_date is not None:
+        page_query = page_query.where(SessionRow.created_at < to_date)
     page_query = page_query.order_by(SessionRow.created_at.desc()).limit(
         limit + 1
     )
