@@ -1,33 +1,37 @@
-"""T035 + T036 (sprint2-backend) — shape match end-to-end validation.
+"""T035 + T036 + T038 (sprint2-backend) — bridge pipeline validation.
 
-T035 pins the upper bound: two *identical* sessions, fed through
-the full bridge pipeline (T031 segment → T032 extract → T033
-normalize → T034 score), produce a per-corner score of 1.0.
+End-to-end checks that the full T031→T034 / T031→T037 stacks
+behave correctly on synthetic sessions:
 
-T036 pins the discrimination band: a synthetic "real-world"
-perturbation of the sim signal (deterministic seeded noise that
-emulates sensor jitter + driver-input variability) scores in
-(0.6, 0.95) — positive but not perfect correlation. Until an
-archived sim-vs-real telemetry pair is available, the synthetic
-emulation stands in; the discrimination contract is the same.
+T035 — shape match upper bound: identical sessions → 1.0 per corner.
+T036 — shape match band: synthetic 'real-world' perturbation of a
+       sim session lands in (0.6, 0.95) — positive correlation but
+       not perfect. Stand-in until an archived sim-vs-real pair is
+       available; the discrimination contract is the same.
+T038 — intensity match upper + scaled bound: identical sessions →
+       1.0; a uniform 1.25× scale on every channel → 0.8 per corner
+       (1/1.25 = 0.8 — the algebraic relationship is the contract).
 
 Why integration rather than just unit:
-  test_shape_match.py already covers the score function with
-  hand-built ChannelFrames. That doesn't catch errors in the
-  upstream stages — only this end-to-end test does.
+  test_shape_match.py and test_intensity_match.py already cover
+  the score functions on hand-built ChannelFrames. That doesn't
+  catch errors in the upstream stages — only end-to-end does.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import numpy as np
 
-from domain.channel_extractor import extract_channels
+from domain.channel_extractor import ChannelFrame, extract_channels
 from domain.channel_normalizer import normalize_channels
+from domain.intensity_match import intensity_match_score
 from domain.lap_segmenter import Corner, segment_paired_laps
 from domain.shape_match import shape_match_score
+
+ScoreFn = Callable[[ChannelFrame, ChannelFrame], float]
 
 
 def _synthetic_lap(
@@ -71,9 +75,11 @@ def _score_pipeline(
     samples_a: list[dict[str, object]],
     samples_b: list[dict[str, object]],
     corners: list[Corner],
+    score_fn: ScoreFn = shape_match_score,
 ) -> list[float]:
-    """Run the full T031→T034 stack, return one score per
-    (lap-pair, corner) segment."""
+    """Run the full T031→T033 stack and apply `score_fn` (T034
+    shape_match by default, T037 intensity_match for T038), return
+    one score per (lap-pair, corner) segment."""
     segments = segment_paired_laps(samples_a, samples_b, corners)
     scores: list[float] = []
     for seg in segments:
@@ -90,7 +96,7 @@ def _score_pipeline(
         ]
         norm_a = normalize_channels(frame_a, x_a)
         norm_b = normalize_channels(frame_b, x_b)
-        scores.append(shape_match_score(norm_a, norm_b))
+        scores.append(score_fn(norm_a, norm_b))
     return scores
 
 
@@ -189,3 +195,67 @@ def test_sim_vs_real_emulation_is_deterministic() -> None:
     scores_a = _score_pipeline(sim, real_a, corners)
     scores_b = _score_pipeline(sim, real_b, corners)
     assert scores_a == scores_b
+
+
+# -- T038: intensity match end-to-end -----------------------------
+
+
+_NUMERIC_KEYS = ("brake", "throttle", "steering", "speed", "g_lat", "g_lon")
+
+
+def _scale_session(
+    sim_samples: list[dict[str, object]], factor: float
+) -> list[dict[str, object]]:
+    """Multiply every numeric channel by `factor`. Lap and distance
+    keys are preserved unchanged so segmentation still aligns."""
+    out: list[dict[str, object]] = []
+    for s in sim_samples:
+        scaled = dict(s)
+        for k in _NUMERIC_KEYS:
+            scaled[k] = factor * float(s[k])  # type: ignore[arg-type]
+        out.append(scaled)
+    return out
+
+
+def test_identical_sessions_intensity_score_one_per_corner() -> None:
+    """T038 acceptance upper-bound: identical sim-vs-sim sessions
+    score 1.0 on intensity match, just as on shape match."""
+    a, b = _identical_sessions()
+    corners = [
+        Corner(name="T1", start_m=0.0, end_m=400.0),
+        Corner(name="T2", start_m=500.0, end_m=900.0),
+    ]
+    scores = _score_pipeline(a, b, corners, score_fn=intensity_match_score)
+    assert len(scores) == 4
+    for score in scores:
+        assert math.isclose(score, 1.0, abs_tol=1e-9)
+
+
+def test_uniformly_scaled_session_intensity_score_is_inverse() -> None:
+    """T038 acceptance scaled-bound: a session multiplied uniformly
+    by 1.25 scores 0.8 on intensity match (1/1.25 = 0.8). Pins the
+    algebraic relationship between scale factor and score."""
+    sim = list(_synthetic_lap(1)) + list(_synthetic_lap(2))
+    scaled = _scale_session(sim, factor=1.25)
+    corners = [
+        Corner(name="T1", start_m=0.0, end_m=400.0),
+        Corner(name="T2", start_m=500.0, end_m=900.0),
+    ]
+    scores = _score_pipeline(
+        sim, scaled, corners, score_fn=intensity_match_score
+    )
+    assert len(scores) == 4
+    for score in scores:
+        assert math.isclose(score, 0.8, abs_tol=1e-9)
+
+
+def test_intensity_score_is_independent_of_scale_direction() -> None:
+    """Robustness: scaling A up vs. scaling B up gives the same
+    score — symmetry through the pipeline. Catches regressions
+    where a one-sided abs() or order-dependent op leaks in."""
+    sim = list(_synthetic_lap(1))
+    scaled = _scale_session(sim, factor=1.25)
+    corners = [Corner(name="full", start_m=0.0, end_m=1000.0)]
+    a = _score_pipeline(sim, scaled, corners, score_fn=intensity_match_score)
+    b = _score_pipeline(scaled, sim, corners, score_fn=intensity_match_score)
+    assert a == b
