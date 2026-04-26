@@ -204,6 +204,11 @@ class ActionPrescription(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # T008 (sprint2) — None = not flagged. First-flag-wins
+    # idempotency lives in the router, not the schema.
+    flagged_wrong_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     outcome_id: Mapped[UUID | None] = mapped_column(
         Uuid,
         ForeignKey("action_outcomes.id", ondelete="SET NULL"),

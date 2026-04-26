@@ -124,6 +124,37 @@ async def skip_prescription(
     }
 
 
+@router.post("/{prescription_id}/flag-wrong")
+async def flag_prescription_wrong(
+    prescription_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
+    """T008 (sprint2) — record a user-flagged false positive.
+
+    Sets `flagged_wrong_at` once; subsequent calls are no-ops so
+    the timestamp reflects when the user first reported the
+    suggestion as wrong (not the most recent click). The flag is
+    orthogonal to lifecycle status — flagging doesn't change
+    `status`, so a flagged-but-completed prescription stays
+    completed.
+
+    T011 will aggregate these flags per rule to decrement the
+    rule's confidence score; T008 just records them.
+    """
+    prescription = await _load_owned_prescription(
+        db, user=user, prescription_id=prescription_id
+    )
+    if prescription.flagged_wrong_at is None:
+        prescription.flagged_wrong_at = datetime.now(UTC)
+        await db.commit()
+    return {
+        "id": str(prescription.id),
+        "status": prescription.status,
+        "flagged_wrong_at": prescription.flagged_wrong_at.isoformat(),
+    }
+
+
 @driver_router.get(
     "/{driver_id}/prescriptions",
     response_model=ActionPrescriptionList,
