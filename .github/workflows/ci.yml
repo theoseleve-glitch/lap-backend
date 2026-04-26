@@ -26,3 +26,15 @@ jobs:
 
       - name: Pytest
         run: uv run pytest -q
+
+      # T234 — security scans. Both must pass for CI to go green.
+      # bandit covers our own source (insecure code patterns);
+      # pip-audit covers the dep graph (CVEs). The pip CVE is
+      # ignored because pip is build-time tooling pulled in by
+      # pip-audit itself, not a runtime dep, and has no fix
+      # version published. Re-evaluate on each Renovate bump.
+      - name: Bandit (own source)
+        run: uv run bandit -r app domain infra coaching -ll
+
+      - name: pip-audit (dep CVEs)
+        run: uv run pip-audit --skip-editable --ignore-vuln CVE-2026-3219
