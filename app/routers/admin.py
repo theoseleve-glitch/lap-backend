@@ -23,6 +23,9 @@ from coaching.library.rule_runner import (
     run_rules,
 )
 from coaching.library.rule_schema import Difficulty
+from infra.coaching_flag_aggregation import (
+    compute_high_false_positive_rules,
+)
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import User as UserRow
@@ -294,5 +297,43 @@ def simulate_coaching_rules(
                 explanation=ins.explanation,
             )
             for ins in insights
+        ]
+    )
+
+
+# T206 — surfaces rules whose users-flagged-as-false-positive
+# rate exceeds 10%. Pure compute over coaching_insights — no
+# cron, no cached state. Operator visits this when reviewing
+# rule library health, sees the worst offenders sorted first.
+
+
+class _FlaggedRuleOut(BaseModel):
+    rule_id: str
+    total: int
+    flagged_count: int
+    false_positive_rate: float
+
+
+class _FlaggedRulesResponse(BaseModel):
+    rules: list[_FlaggedRuleOut]
+
+
+@router.get(
+    "/coaching/rules/flagged", response_model=_FlaggedRulesResponse
+)
+async def list_flagged_coaching_rules(
+    _admin: Annotated[UserRow, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> _FlaggedRulesResponse:
+    stats = await compute_high_false_positive_rules(db)
+    return _FlaggedRulesResponse(
+        rules=[
+            _FlaggedRuleOut(
+                rule_id=s.rule_id,
+                total=s.total,
+                flagged_count=s.flagged_count,
+                false_positive_rate=s.false_positive_rate,
+            )
+            for s in stats
         ]
     )
