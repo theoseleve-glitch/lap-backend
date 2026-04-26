@@ -37,6 +37,82 @@ def _parse_dt(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value)
 
 
+def _track_display_name(track: dict[str, Any]) -> str:
+    """Compose the display name from iRacing's track + config.
+
+    Spa GP and Spa endurance share track_name "Spa-Francorchamps"
+    but differ on config_name. Concatenating distinguishes them in
+    the entry's free-text track_name; downstream T086+ catalog
+    bridge can still resolve to a single TrackLayout.
+    """
+    name = track.get("track_name") or ""
+    config = track.get("config_name")
+    if config:
+        return f"{name} {config}".strip()
+    return name
+
+
+def parse_iracing_calendar_payload(
+    raw: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """T086 — convert raw iRacing API response to entry dicts.
+
+    Input shape (representative — actual iRacing schema is similar
+    but verbose):
+      {"series": [{series_id, series_name, car_classes, schedules: [
+          {race_week_num, track, start_date, end_date}, ...]}],
+       "special_events": [{event_id, event_name, track,
+          start_at, end_at}]}
+
+    Output is the entry-shape list T085's
+    fetch_and_store_iracing_calendar consumes. source_id is the
+    upsert key — it MUST be deterministic across re-parses (T085's
+    cron re-fires weekly; nondeterminism would duplicate every row).
+
+    Defensive against missing top-level arrays — iRacing may omit
+    `special_events` off-season or `series` between seasons; the
+    cron must not crash.
+    """
+    entries: list[dict[str, Any]] = []
+    for series in raw.get("series", []) or []:
+        series_id = series["series_id"]
+        car_classes = series.get("car_classes") or []
+        # One series ⇒ one car class in iRacing's data shape; if a
+        # series has multiple, take the first (the parser stays
+        # representative; T086 doesn't try to model multi-class
+        # endurance series, which use the special_events path).
+        car_class = car_classes[0]["name"] if car_classes else None
+        for schedule in series.get("schedules", []) or []:
+            week = schedule["race_week_num"]
+            entries.append({
+                "source_id": f"ir-series-{series_id}-week-{week}",
+                "series_name": series["series_name"],
+                "event_name": (
+                    f"{series['series_name']} — Week {week}"
+                ),
+                "starts_at": schedule["start_date"],
+                "ends_at": schedule.get("end_date"),
+                "track_name": _track_display_name(schedule["track"]),
+                "car_class": car_class,
+                "kind": "series_week",
+            })
+    for special in raw.get("special_events", []) or []:
+        entries.append({
+            "source_id": f"ir-special-{special['event_id']}",
+            "series_name": "iRacing Special Events",
+            "event_name": special["event_name"],
+            "starts_at": special["start_at"],
+            "ends_at": special.get("end_at"),
+            "track_name": _track_display_name(special["track"]),
+            # Specials run multi-class — leave None rather than
+            # picking one arbitrarily; T092's filter treats None
+            # as "open to any car class".
+            "car_class": None,
+            "kind": "special_event",
+        })
+    return entries
+
+
 async def fetch_and_store_iracing_calendar(
     *,
     db: AsyncSession,
