@@ -1,5 +1,6 @@
 from typing import Annotated, cast
 
+import structlog
 import uuid6
 from fastapi import APIRouter, Depends, HTTPException, status
 from lap_schemas.v1 import (
@@ -17,8 +18,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.flags import is_enabled
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import User as UserRow
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/api/v1", tags=["me"])
 
@@ -37,6 +41,16 @@ def _serialize(profile: DriverProfileRow) -> DriverProfileSchema:
 async def read_me(
     user: Annotated[UserRow, Depends(get_current_user)],
 ) -> UserSchema:
+    # T237 — `verbose_me_read` flag gates extra observability for
+    # rollout debugging. Off by default; the response shape is
+    # unaffected either way (flags must not change the wire format).
+    if is_enabled("verbose_me_read"):
+        logger.info(
+            "me.read.verbose",
+            clerk_user_id=user.clerk_user_id,
+            user_id=str(user.id),
+            subscription_status=user.subscription_status,
+        )
     return UserSchema(
         id=user.id,
         clerk_user_id=user.clerk_user_id,
