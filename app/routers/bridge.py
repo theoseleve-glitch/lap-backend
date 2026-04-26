@@ -18,7 +18,7 @@ session ids.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -26,6 +26,8 @@ import uuid6
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from lap_schemas.v1 import (
     BridgeLinkRatingRequest,
+    BridgeSuggestLinkCandidate,
+    BridgeSuggestLinkList,
     TransferLinkBulkCreate,
     TransferLinkBulkResponse,
     TransferLinkCreate,
@@ -591,4 +593,165 @@ async def list_driver_bridge_links(
         total=int(total),
         limit=limit,
         offset=offset,
+    )
+
+
+# T046 (sprint2-backend) — suggest candidate sessions to pair with
+# the source. Filters: same master_track_id, same car_class, within
+# 60 days of source.created_at, exclude source itself, must belong
+# to the authenticated driver.
+_SUGGEST_WINDOW = timedelta(days=60)
+
+
+@router.get(
+    "/suggest_links",
+    response_model=BridgeSuggestLinkList,
+    responses={
+        404: {"description": "session_not_found"},
+        422: {"description": "session_unbridgeable"},
+    },
+)
+async def suggest_bridge_links(
+    session_id: Annotated[UUID, Query()],
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> BridgeSuggestLinkList:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+
+    source = (
+        await db.execute(
+            select(SessionRow)
+            .where(SessionRow.id == session_id)
+            .where(SessionRow.driver_id == profile.id)
+        )
+    ).scalar_one_or_none()
+    if source is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+
+    src_track_raw = (source.manifest or {}).get("track_id")
+    src_car_raw = (source.manifest or {}).get("car_id")
+    if not src_track_raw or not src_car_raw:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="session_unbridgeable",
+        )
+    src_track_row = (
+        await db.execute(
+            select(TrackLayoutRow).where(
+                TrackLayoutRow.id == UUID(str(src_track_raw))
+            )
+        )
+    ).scalar_one_or_none()
+    src_car_row = (
+        await db.execute(
+            select(CarModelRow).where(
+                CarModelRow.id == UUID(str(src_car_raw))
+            )
+        )
+    ).scalar_one_or_none()
+    if src_track_row is None or src_car_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="session_unbridgeable",
+        )
+    src_master = src_track_row.master_track_id
+    src_class = src_car_row.car_class
+
+    # Pull candidate sessions in the recency window (driver-scoped,
+    # exclude source). One query gets the candidate set; we then
+    # filter in-Python by resolving each candidate's track/car
+    # against the catalog. Acceptable for typical session counts
+    # since this endpoint is cacheable per-source (T048).
+    window_start = source.created_at - _SUGGEST_WINDOW
+    window_end = source.created_at + _SUGGEST_WINDOW
+    candidate_rows = (
+        (
+            await db.execute(
+                select(SessionRow)
+                .where(SessionRow.driver_id == profile.id)
+                .where(SessionRow.id != session_id)
+                .where(SessionRow.created_at >= window_start)
+                .where(SessionRow.created_at <= window_end)
+                .order_by(SessionRow.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Batch-resolve all candidate track/car ids in one round trip
+    # each so we don't N+1 the catalog lookup.
+    cand_track_ids: set[UUID] = set()
+    cand_car_ids: set[UUID] = set()
+    cand_meta: list[tuple[SessionRow, UUID, UUID]] = []
+    for c in candidate_rows:
+        manifest = c.manifest or {}
+        t_raw = manifest.get("track_id")
+        c_raw = manifest.get("car_id")
+        if not t_raw or not c_raw:
+            continue
+        t_id = UUID(str(t_raw))
+        c_id = UUID(str(c_raw))
+        cand_track_ids.add(t_id)
+        cand_car_ids.add(c_id)
+        cand_meta.append((c, t_id, c_id))
+
+    track_master_by_id: dict[UUID, UUID] = {}
+    if cand_track_ids:
+        for tr in (
+            (
+                await db.execute(
+                    select(TrackLayoutRow).where(
+                        TrackLayoutRow.id.in_(cand_track_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            track_master_by_id[tr.id] = tr.master_track_id
+    car_class_by_id: dict[UUID, str] = {}
+    if cand_car_ids:
+        for cr in (
+            (
+                await db.execute(
+                    select(CarModelRow).where(
+                        CarModelRow.id.in_(cand_car_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            car_class_by_id[cr.id] = cr.car_class
+
+    matches: list[BridgeSuggestLinkCandidate] = []
+    for sess, t_id, c_id in cand_meta:
+        if track_master_by_id.get(t_id) != src_master:
+            continue
+        if car_class_by_id.get(c_id) != src_class:
+            continue
+        matches.append(
+            BridgeSuggestLinkCandidate(
+                session_id=sess.id,
+                created_at=sess.created_at,
+            )
+        )
+    return BridgeSuggestLinkList(
+        source_session_id=session_id,
+        candidates=tuple(matches),
     )
