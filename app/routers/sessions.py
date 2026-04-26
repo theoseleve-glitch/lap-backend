@@ -14,8 +14,15 @@ from fastapi import (
     UploadFile,
     status,
 )
-from lap_schemas.v1 import SessionDetail, SessionIngestAccepted, SessionManifest
+from lap_schemas.v1 import (
+    NextActionsResponse,
+    SessionDetail,
+    SessionIngestAccepted,
+    SessionManifest,
+)
+from lap_schemas.v1.action_prescription import ActionPrescriptionListItem
 from lap_schemas.v1.session import SessionStatus
+from lap_schemas.v1.weakness_episode import WeaknessEpisode as WeaknessEpisodeSchema
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,10 +41,12 @@ from domain.checksum_validator import (
 )
 from infra.idempotency_cache import IdempotencyCache
 from infra.metrics import ingest_duration_seconds, sessions_ingested_total
+from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
+from infra.orm import WeaknessEpisode as WeaknessEpisodeRow
 from infra.posthog import PosthogClientProtocol
 from infra.storage import BlobStoreProtocol
 from infra.task_dispatcher import TaskDispatcherProtocol
@@ -226,4 +235,102 @@ async def get_session(
         status=cast(SessionStatus, row.status),
         created_at=row.created_at,
         failure_reason=row.failure_reason,
+    )
+
+
+# T224 / WA-009 — post-session debrief bundle. Returns
+# WeaknessEpisodes touched by this session + open prescriptions
+# linked to them. Replaces the webapp's old SessionDebrief
+# client-side heuristic.
+_OPEN_PRESCRIPTION_STATUSES = ("proposed", "accepted", "in_progress")
+
+
+@router.get(
+    "/{session_id}/next_actions",
+    response_model=NextActionsResponse,
+)
+async def get_session_next_actions(
+    session_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> NextActionsResponse:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    session_row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if (
+        session_row is None
+        or profile is None
+        or session_row.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+    # JSONB containment isn't standard SQL so filter sessions_affected
+    # in Python — episode counts per driver are bounded.
+    session_str = str(session_id)
+    candidate_episodes = (
+        await db.execute(
+            select(WeaknessEpisodeRow).where(
+                WeaknessEpisodeRow.driver_id == profile.id
+            )
+        )
+    ).scalars().all()
+    matching_episodes = [
+        ep for ep in candidate_episodes
+        if session_str in ep.sessions_affected
+    ]
+    episode_ids = [ep.id for ep in matching_episodes]
+    open_prescriptions = (
+        (
+            await db.execute(
+                select(ActionPrescriptionRow)
+                .where(
+                    ActionPrescriptionRow.weakness_episode_id.in_(
+                        episode_ids
+                    )
+                )
+                .where(
+                    ActionPrescriptionRow.status.in_(
+                        _OPEN_PRESCRIPTION_STATUSES
+                    )
+                )
+            )
+        ).scalars().all()
+        if episode_ids
+        else []
+    )
+    return NextActionsResponse(
+        session_id=session_id,
+        weakness_episodes=tuple(
+            WeaknessEpisodeSchema.model_validate(
+                ep, from_attributes=True
+            )
+            for ep in matching_episodes
+        ),
+        action_prescriptions=tuple(
+            ActionPrescriptionListItem(
+                id=p.id,
+                driver_id=p.driver_id,
+                weakness_episode_id=p.weakness_episode_id,
+                created_at=p.created_at,
+                priority=p.priority,
+                title=p.title,
+                rationale=p.rationale,
+                drill_template_id=p.drill_template_id,
+                success_condition=p.success_condition,
+                status=p.status,
+                accepted_at=p.accepted_at,
+            )
+            for p in open_prescriptions
+        ),
     )
