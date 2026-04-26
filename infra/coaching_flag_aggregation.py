@@ -103,3 +103,41 @@ async def send_high_fp_rules_alert(
     if not stats:
         return
     slack.post(channel, _format_alert(stats))
+
+
+# T013 (sprint2-backend) — full per-rule stats for the admin
+# rules-health overview. Different from `compute_high_false_positive_rules`:
+# no threshold filter, EVERY rule_id seen in coaching_insights
+# appears (even at 0% FP). The router merges this with the loaded
+# rule library so rules that never fired also surface.
+async def compute_per_rule_stats(
+    db: AsyncSession,
+) -> list[FlaggedRuleStat]:
+    """Return per-rule_id stats for every rule that has at least
+    one insight in the DB. Sorted FP rate desc."""
+    flagged_sum = func.sum(
+        case((CoachingInsight.flagged_false_positive, 1), else_=0)
+    )
+    total_count = func.count(CoachingInsight.id)
+    stmt = select(
+        CoachingInsight.rule_id,
+        total_count.label("total"),
+        flagged_sum.label("flagged_count"),
+    ).group_by(CoachingInsight.rule_id)
+    rows = (await db.execute(stmt)).all()
+
+    stats: list[FlaggedRuleStat] = []
+    for rule_id, total, flagged_count in rows:
+        if total == 0:
+            continue
+        rate = float(flagged_count) / float(total)
+        stats.append(
+            FlaggedRuleStat(
+                rule_id=rule_id,
+                total=int(total),
+                flagged_count=int(flagged_count),
+                false_positive_rate=rate,
+            )
+        )
+    stats.sort(key=lambda s: s.false_positive_rate, reverse=True)
+    return stats

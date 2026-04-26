@@ -25,6 +25,7 @@ from coaching.library.rule_runner import (
 from coaching.library.rule_schema import Difficulty
 from infra.coaching_flag_aggregation import (
     compute_high_false_positive_rules,
+    compute_per_rule_stats,
 )
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
@@ -337,3 +338,69 @@ async def list_flagged_coaching_rules(
             for s in stats
         ]
     )
+
+
+# T013 (sprint2-backend) — comprehensive rules health overview.
+# Distinct from /coaching/rules/flagged (T206): no threshold filter,
+# every library rule appears (even at 0% FP, even if it never fired)
+# AND every rule_id ever seen in coaching_insights appears (even if
+# the library no longer ships it — e.g. after a rename).
+#
+# Sort: rules WITH stats sorted by FP rate desc; rules with no
+# data (total=0) appended at the end so the operator's eye lands
+# on the worst offenders first.
+
+
+class _RuleHealthOut(BaseModel):
+    rule_id: str
+    total: int
+    flagged_count: int
+    false_positive_rate: float
+
+
+class _RulesHealthResponse(BaseModel):
+    rules: list[_RuleHealthOut]
+
+
+@router.get("/rules/health", response_model=_RulesHealthResponse)
+async def list_rules_health(
+    _admin: Annotated[UserRow, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> _RulesHealthResponse:
+    # Lazy import — same reasoning as /coaching/rules/simulate:
+    # avoids loading every YAML on app import for the 99% of
+    # requests that don't hit this endpoint.
+    from coaching.library.rule_loader import load_rules
+
+    library = load_rules(_RULES_DIR)
+    db_stats = await compute_per_rule_stats(db)
+    seen = {s.rule_id for s in db_stats}
+
+    rows: list[_RuleHealthOut] = []
+    # First: rules with stats — sorted by FP rate desc by the
+    # aggregation function. Operator's eye lands on worst first.
+    # rule_ids in DB but not in the library (e.g. after a rule
+    # rename) appear here too at their natural FP-rate position.
+    for stat in db_stats:
+        rows.append(
+            _RuleHealthOut(
+                rule_id=stat.rule_id,
+                total=stat.total,
+                flagged_count=stat.flagged_count,
+                false_positive_rate=stat.false_positive_rate,
+            )
+        )
+    # Then: library rules with no insights yet — total=0,
+    # rate=0. Operator can spot dead rules.
+    for rule in library:
+        if rule.id in seen:
+            continue
+        rows.append(
+            _RuleHealthOut(
+                rule_id=rule.id,
+                total=0,
+                flagged_count=0,
+                false_positive_rate=0.0,
+            )
+        )
+    return _RulesHealthResponse(rules=rows)
