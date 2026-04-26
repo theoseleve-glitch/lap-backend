@@ -404,3 +404,58 @@ async def list_rules_health(
             )
         )
     return _RulesHealthResponse(rules=rows)
+
+
+# T064 (sprint2-backend) — operator visibility into cohort sizes
+# per (master_car, master_track). One entry per distinct cohort
+# that has any contributions in cohort_metrics; unlocked flag
+# echoes the T056 threshold check so the operator can spot
+# cohorts that are nearly across the line.
+
+
+class _CohortStatusEntry(BaseModel):
+    car_id: UUID
+    track_id: UUID
+    cohort_size: int
+    unlocked: bool
+
+
+class _CohortStatusResponse(BaseModel):
+    cohorts: list[_CohortStatusEntry]
+
+
+@router.get("/cohort/status", response_model=_CohortStatusResponse)
+async def list_cohort_status(
+    _admin: Annotated[UserRow, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> _CohortStatusResponse:
+    # Lazy import — keeps the cohort domain out of the admin
+    # module's import surface for the 99% of admin requests
+    # that don't hit this endpoint.
+    from domain.cohort_minimum import (
+        MIN_COHORT_SIZE,
+        count_cohort_members,
+    )
+    from infra.orm import CohortMetric
+
+    distinct_cohorts = (
+        (
+            await db.execute(
+                select(CohortMetric.car_id, CohortMetric.track_id)
+                .distinct()
+            )
+        )
+        .all()
+    )
+    entries: list[_CohortStatusEntry] = []
+    for car_id, track_id in distinct_cohorts:
+        n = await count_cohort_members(
+            db, car_id=car_id, track_id=track_id
+        )
+        entries.append(
+            _CohortStatusEntry(
+                car_id=car_id, track_id=track_id,
+                cohort_size=n, unlocked=n >= MIN_COHORT_SIZE,
+            )
+        )
+    return _CohortStatusResponse(cohorts=entries)
