@@ -282,6 +282,19 @@ class DriverProgressSnapshot(Base):
         JSON().with_variant(JSONB(), "postgresql")
     )
 
+    # T073 endurance-weighted dimensions. Nullable because sprint-only
+    # drivers won't have stint-level data; additive non-breaking
+    # preserves every existing snapshot already in the DB.
+    long_run_consistency: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
+    pace_decay: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
+    tire_preservation: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
+
     overall_score: Mapped[float] = mapped_column(Float)
     overall_confidence: Mapped[float] = mapped_column(Float)
     percentile_vs_cohort: Mapped[float | None] = mapped_column(Float, nullable=True)
