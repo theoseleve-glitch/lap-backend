@@ -14,11 +14,13 @@ No min-sample-size guard: the sprint contract is exactly
 result and can decide whether a 1/1 spike is real.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from infra.kpi_report import SlackPoster
 from infra.orm import CoachingInsight
 
 DEFAULT_THRESHOLD = 0.10
@@ -65,3 +67,39 @@ async def compute_high_false_positive_rules(
             )
     stats.sort(key=lambda s: s.false_positive_rate, reverse=True)
     return stats
+
+
+# T012 (sprint2-backend) — proactive Slack alert wrapping the
+# aggregation. Mirrors `infra.session_audit.send_session_loss_alert`:
+# silent on quiet days (no rules over threshold = no post), single
+# multi-line ping when there ARE flagged rules so the operator gets
+# the full picture without having to visit the admin UI.
+def _format_alert(stats: Sequence[FlaggedRuleStat]) -> str:
+    count = len(stats)
+    plural = "rule" if count == 1 else "rules"
+    lines = [
+        f":warning: Coaching rule FP audit: *{count} {plural} over threshold*"
+    ]
+    for s in stats:
+        pct = s.false_positive_rate * 100.0
+        lines.append(
+            f"• `{s.rule_id}` — {pct:.1f}% "
+            f"({s.flagged_count}/{s.total} flagged)"
+        )
+    return "\n".join(lines)
+
+
+async def send_high_fp_rules_alert(
+    db: AsyncSession,
+    slack: SlackPoster,
+    *,
+    channel: str,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> None:
+    """Aggregate → alert if any. Skips the post entirely on a clean run."""
+    stats = await compute_high_false_positive_rules(
+        db, threshold=threshold
+    )
+    if not stats:
+        return
+    slack.post(channel, _format_alert(stats))

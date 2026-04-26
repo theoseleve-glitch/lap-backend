@@ -78,6 +78,14 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.daily_pg_backup",
         "schedule": crontab(hour=2, minute=0),
     },
+    # T012 (sprint2) — nightly 03:15 UTC rule false-positive audit.
+    # Slot lives between 03:00 weakness decay and 03:30 prescription
+    # expiry so all three nightly aggregations run in one quiet
+    # window without contending. Silent on clean runs.
+    "nightly-rule-fp-audit": {
+        "task": "infra.celery_app.nightly_rule_fp_audit",
+        "schedule": crontab(hour=3, minute=15),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -415,6 +423,40 @@ def nightly_prescription_expiry() -> str:
         "prescription_expiry.run", updated_prescriptions=updated
     )
     return f"updated={updated}"
+
+
+async def _run_rule_fp_audit() -> None:
+    """T012 cron body: aggregate flagged_false_positive across
+    coaching_insights and Slack-post any rules over threshold.
+    Silent when none cross — same pattern as session_loss_audit."""
+    from infra.coaching_flag_aggregation import send_high_fp_rules_alert
+    from infra.slack import make_slack_poster
+
+    channel = os.environ.get("SLACK_ALERTS_CHANNEL", "#alerts")
+    token = os.environ.get("SLACK_BOT_TOKEN", "")
+    if not token:
+        logger.warning("rule_fp_audit.no_slack_token")
+        return
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            await send_high_fp_rules_alert(
+                db,
+                make_slack_poster(token),
+                channel=channel,
+            )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.nightly_rule_fp_audit")  # type: ignore[untyped-decorator]
+def nightly_rule_fp_audit() -> str:
+    """Beat-triggered nightly 03:15 UTC. Surfaces high-FP coaching
+    rules to the alerts channel."""
+    asyncio.run(_run_rule_fp_audit())
+    return "ok"
 
 
 @celery_app.task(name="infra.celery_app.daily_pg_backup")  # type: ignore[untyped-decorator]
