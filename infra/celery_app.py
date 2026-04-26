@@ -62,6 +62,14 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.nightly_weakness_episode_decay",
         "schedule": crontab(hour=3, minute=0),
     },
+    # T223 — nightly 03:30 UTC ActionPrescription expiry sweep.
+    # Offset 30min from episode decay so they don't contend on
+    # the same DB transaction window. Idempotent — terminal
+    # statuses are excluded so a missed run plus catch-up is fine.
+    "nightly-prescription-expiry": {
+        "task": "infra.celery_app.nightly_prescription_expiry",
+        "schedule": crontab(hour=3, minute=30),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -366,5 +374,36 @@ def nightly_weakness_episode_decay() -> str:
     updated = asyncio.run(_run_episode_decay())
     logger.info(
         "weakness_episode_decay.run", updated_episodes=updated
+    )
+    return f"updated={updated}"
+
+
+async def _run_prescription_expiry() -> int:
+    """T223 cron body: flip every actionable ActionPrescription
+    whose `valid_until` has elapsed to status='expired'. Returns
+    the number of rows actually updated, logged for visibility."""
+    from datetime import UTC, datetime
+
+    from infra.prescription_expiry import expire_overdue_prescriptions
+
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            return await expire_overdue_prescriptions(
+                db, now=datetime.now(UTC)
+            )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.nightly_prescription_expiry")  # type: ignore[untyped-decorator]
+def nightly_prescription_expiry() -> str:
+    """Beat-triggered nightly 03:30 UTC. Expires actionable
+    prescriptions whose valid_until window has elapsed."""
+    updated = asyncio.run(_run_prescription_expiry())
+    logger.info(
+        "prescription_expiry.run", updated_prescriptions=updated
     )
     return f"updated={updated}"
