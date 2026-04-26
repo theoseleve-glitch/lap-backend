@@ -16,11 +16,13 @@ from fastapi import (
 )
 from lap_schemas.v1 import (
     NextActionsResponse,
+    SessionCoachingView,
     SessionDetail,
     SessionIngestAccepted,
     SessionManifest,
 )
 from lap_schemas.v1.action_prescription import ActionPrescriptionListItem
+from lap_schemas.v1.coaching_insight import CoachingInsight
 from lap_schemas.v1.session import SessionStatus
 from lap_schemas.v1.weakness_episode import WeaknessEpisode as WeaknessEpisodeSchema
 from pydantic import ValidationError
@@ -42,6 +44,7 @@ from domain.checksum_validator import (
 from infra.idempotency_cache import IdempotencyCache
 from infra.metrics import ingest_duration_seconds, sessions_ingested_total
 from infra.orm import ActionPrescription as ActionPrescriptionRow
+from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import TelemetryArtifact
@@ -333,4 +336,142 @@ async def get_session_next_actions(
             )
             for p in open_prescriptions
         ),
+    )
+
+
+# T010 (sprint2-backend) — retrospective coaching view for ONE
+# session. Distinct from /next_actions (which is forward-looking
+# debrief): this returns what the rules engine actually said about
+# this session, including resolved/skipped artifacts.
+#
+# Weakness linkage uses WeaknessEpisode.linked_insights (insight ids
+# the episode incorporated as evidence) — filtered in Python because
+# JSONB array containment isn't standard SQL, and the cardinality
+# (episodes per driver) is bounded.
+@router.get(
+    "/{session_id}/coaching",
+    response_model=SessionCoachingView,
+)
+async def get_session_coaching(
+    session_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SessionCoachingView:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    session_row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if (
+        session_row is None
+        or profile is None
+        or session_row.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+
+    insight_rows = list(
+        (
+            await db.execute(
+                select(CoachingInsightRow).where(
+                    CoachingInsightRow.session_id == session_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    insight_ids = {str(r.id) for r in insight_rows}
+    rx_ids = [
+        r.suggested_prescription_id
+        for r in insight_rows
+        if r.suggested_prescription_id is not None
+    ]
+
+    rx_rows = (
+        list(
+            (
+                await db.execute(
+                    select(ActionPrescriptionRow).where(
+                        ActionPrescriptionRow.id.in_(rx_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if rx_ids
+        else []
+    )
+
+    weakness_candidates = list(
+        (
+            await db.execute(
+                select(WeaknessEpisodeRow).where(
+                    WeaknessEpisodeRow.driver_id == profile.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    matching_weaknesses = [
+        ep
+        for ep in weakness_candidates
+        if any(linked in insight_ids for linked in (ep.linked_insights or []))
+    ]
+
+    return SessionCoachingView(
+        session_id=session_id,
+        insights=tuple(_insight_schema(r) for r in insight_rows),
+        weaknesses_touched=tuple(
+            WeaknessEpisodeSchema.model_validate(
+                ep, from_attributes=True
+            )
+            for ep in matching_weaknesses
+        ),
+        prescriptions_generated=tuple(
+            ActionPrescriptionListItem(
+                id=p.id,
+                driver_id=p.driver_id,
+                weakness_episode_id=p.weakness_episode_id,
+                created_at=p.created_at,
+                priority=p.priority,
+                title=p.title,
+                rationale=p.rationale,
+                drill_template_id=p.drill_template_id,
+                success_condition=p.success_condition,
+                status=p.status,
+                accepted_at=p.accepted_at,
+            )
+            for p in rx_rows
+        ),
+    )
+
+
+def _insight_schema(row: CoachingInsightRow) -> CoachingInsight:
+    return CoachingInsight(
+        id=row.id,
+        session_id=row.session_id,
+        driver_id=row.driver_id,
+        created_at=row.created_at,
+        rule_id=row.rule_id,
+        rule_version=row.rule_version,
+        observation=row.observation,
+        evidence=tuple(row.evidence or []),
+        likely_cause=row.likely_cause,
+        severity=row.severity,
+        confidence=row.confidence,
+        corner_tag=row.corner_tag,
+        suggested_prescription_id=row.suggested_prescription_id,
+        flagged_false_positive=row.flagged_false_positive,
     )
