@@ -579,3 +579,43 @@ class CompareCase(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class CohortMetric(Base):
+    """T054 — anonymized cohort metric pool.
+
+    Privacy-by-design: every row is just (car_id, track_id, metric,
+    value, session_time). NO driver_id. The cohort percentile compute
+    (T056+) reads this table for aggregate stats; because the rows
+    have no link back to a driver, percentiles surface no per-driver
+    data even under accidental over-fetch.
+
+    Why no FK on car_id/track_id: the ID columns hold the *master*
+    catalog IDs (master_car_id / master_track_id), which group
+    equivalent provider-specific cars/tracks. Those are not primary
+    keys of car_models/track_layouts (those tables key on the per-
+    provider id), so an FK isn't possible without a normalization
+    pass — and the lack of an FK does not weaken the privacy
+    guarantee, only referential integrity for orphaned IDs.
+
+    Composite index on (car_id, track_id, metric) supports the
+    percentile query path (T057): SELECT value WHERE car=? AND
+    track=? AND metric=?.
+    """
+
+    __tablename__ = "cohort_metrics"
+    __table_args__ = (
+        Index(
+            "ix_cohort_metrics_car_track_metric",
+            "car_id",
+            "track_id",
+            "metric",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    car_id: Mapped[UUID] = mapped_column(Uuid)
+    track_id: Mapped[UUID] = mapped_column(Uuid)
+    metric: Mapped[str] = mapped_column(String(64))
+    value: Mapped[float] = mapped_column(Float)
+    session_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
