@@ -14,6 +14,7 @@ from app.routers import admin as admin_router
 from app.routers import billing as billing_router
 from app.routers import catalog as catalog_router
 from app.routers import coaching as coaching_router
+from app.routers import compare_cases as compare_cases_router
 from app.routers import devices as devices_router
 from app.routers import driver_profile as driver_profile_router
 from app.routers import jobs as jobs_router
@@ -87,6 +88,7 @@ app.include_router(admin_router.router)
 app.include_router(billing_router.router)
 app.include_router(catalog_router.router)
 app.include_router(coaching_router.router)
+app.include_router(compare_cases_router.router)
 app.include_router(devices_router.router)
 app.include_router(driver_profile_router.router)
 app.include_router(jobs_router.router)

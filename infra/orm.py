@@ -517,3 +517,26 @@ class DeviceSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class CompareCase(Base):
+    """T005 — driver-saved A/B (or N-way) session comparison.
+
+    `session_ids` is a JSON array of session UUIDs as strings —
+    JSON not a join table because the cardinality is small (2-10
+    per case) and the order matters for "session A vs session B".
+    """
+
+    __tablename__ = "compare_cases"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    session_ids: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
+    rationale: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
