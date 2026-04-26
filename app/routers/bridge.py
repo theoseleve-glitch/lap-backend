@@ -24,7 +24,13 @@ from uuid import UUID
 
 import uuid6
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from lap_schemas.v1 import BridgeLinkRatingRequest, TransferLinkCreate, TransferLinkList
+from lap_schemas.v1 import (
+    BridgeLinkRatingRequest,
+    TransferLinkBulkCreate,
+    TransferLinkBulkResponse,
+    TransferLinkCreate,
+    TransferLinkList,
+)
 from lap_schemas.v1 import TransferLink as TransferLinkSchema
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,105 +102,92 @@ async def create_bridge_link(
             detail="session_not_found",
         )
 
-    # T026 (sprint2-backend) — bridge validation. Both sessions
-    # must point at the same master_track_id and have the same
-    # car_class (the catalog-resolved cross-sim grouping fields,
-    # not the per-sim track_id/car_id stored on the manifest).
-    # Run *after* the cross-driver check so callers can't probe
-    # catalog state across drivers.
-    await _validate_pair_bridgeable(db, sessions)
+    existing_pairs = await _load_existing_pair_fingerprints(db, profile.id)
+    schema, _ = await _stage_link(
+        db,
+        profile=profile,
+        body=body,
+        item_sessions=list(sessions),
+        existing_pairs=existing_pairs,
+    )
+    await db.commit()
+    return schema
 
-    # T027 (sprint2-backend) — dedup. Same set of session ids
-    # can't be linked twice for the same driver. Order-independent
-    # (the pair is conceptually a set). Driver-scoped (driver B
-    # can link the same pair driver A linked).
-    new_pair_set = {str(s) for s in body.session_pair}
-    existing_for_driver = (
+
+# T030 (sprint2-backend) — atomic bulk create. One driver's batch
+# of 1..100 links in a single transaction. Each item runs the same
+# checks as the single POST (T026 validation, T027 dedup including
+# within-batch, T028 generates an insight). Any failure rolls the
+# whole transaction back — no partial inserts. Optimization: one
+# IN-clause query for cross-driver, one query for existing-pair
+# fingerprints, then per-item local checks.
+@router.post(
+    "/links/bulk",
+    response_model=TransferLinkBulkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def bulk_create_bridge_links(
+    body: TransferLinkBulkCreate,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TransferLinkBulkResponse:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+
+    # All session ids across all items in one shot. Cross-driver
+    # check is collective: if *any* id isn't owned, the whole batch
+    # 404s before we touch catalogs or write anything.
+    all_session_ids = {
+        UUID(str(s)) for item in body.items for s in item.session_pair
+    }
+    sessions_owned = (
         (
             await db.execute(
-                select(TransferLinkRow).where(
-                    TransferLinkRow.driver_id == profile.id
-                )
+                select(SessionRow)
+                .where(SessionRow.id.in_(list(all_session_ids)))
+                .where(SessionRow.driver_id == profile.id)
             )
         )
         .scalars()
         .all()
     )
-    for link in existing_for_driver:
-        if {str(s) for s in link.session_pair} == new_pair_set:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="duplicate_link",
-            )
-
-    link_id = uuid6.uuid7()
-    created_at = datetime.now(UTC)
-
-    # T028 (sprint2-backend) — server-generated CoachingInsight
-    # summarizing the transfer findings. Server-controlled (like
-    # id/driver_id/created_at), so any client-supplied
-    # `generated_report_id` on the body is ignored — we overwrite
-    # with the new insight's id below. Insight points at the
-    # primary session (first in pair); the full pair is reachable
-    # via the link's session_pair field.
-    primary_session_id = UUID(str(body.session_pair[0]))
-    insight_id = uuid6.uuid7()
-    db.add(
-        CoachingInsightRow(
-            id=insight_id,
-            session_id=primary_session_id,
-            driver_id=profile.id,
-            created_at=created_at,
-            rule_id="bridge.link_created",
-            rule_version="v1",
-            observation=_summarize_transfer(body),
-            evidence=[str(s) for s in body.session_pair],
-            likely_cause=None,
-            severity=_severity_from_scores(
-                body.shape_match_score, body.intensity_match_score
-            ),
-            confidence=(
-                body.shape_match_score + body.intensity_match_score
-            )
-            / 2.0,
-            corner_tag=None,
-            suggested_prescription_id=None,
+    if len(sessions_owned) != len(all_session_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
         )
-    )
+    sessions_by_id = {s.id: s for s in sessions_owned}
 
-    row = TransferLinkRow(
-        id=link_id,
-        driver_id=profile.id,
-        created_at=created_at,
-        created_by=body.created_by,
-        session_pair=[str(s) for s in body.session_pair],
-        link_reason=body.link_reason,
-        shape_match_score=body.shape_match_score,
-        intensity_match_score=body.intensity_match_score,
-        divergence_points=[
-            dp.model_dump(mode="json") for dp in body.divergence_points
-        ],
-        transferred_skills=list(body.transferred_skills),
-        non_transferred_skills=list(body.non_transferred_skills),
-        generated_report_id=insight_id,
-    )
-    db.add(row)
+    existing_pairs = await _load_existing_pair_fingerprints(db, profile.id)
+    out: list[TransferLinkSchema] = []
+    for item in body.items:
+        item_sessions = [
+            sessions_by_id[UUID(str(s))] for s in item.session_pair
+        ]
+        schema, new_pair = await _stage_link(
+            db,
+            profile=profile,
+            body=item,
+            item_sessions=item_sessions,
+            existing_pairs=existing_pairs,
+        )
+        # Update the dedup set so a later item in the same batch
+        # that repeats this pair trips on _stage_link's check.
+        existing_pairs.add(new_pair)
+        out.append(schema)
+
     await db.commit()
-
-    return TransferLinkSchema(
-        id=link_id,
-        driver_id=profile.id,
-        created_at=created_at,
-        created_by=body.created_by,
-        session_pair=body.session_pair,
-        link_reason=body.link_reason,
-        shape_match_score=body.shape_match_score,
-        intensity_match_score=body.intensity_match_score,
-        divergence_points=body.divergence_points,
-        transferred_skills=body.transferred_skills,
-        non_transferred_skills=body.non_transferred_skills,
-        generated_report_id=insight_id,
-    )
+    return TransferLinkBulkResponse(items=tuple(out))
 
 
 # T020 (sprint2-backend) — full TransferLink for one bridge link
@@ -337,6 +330,116 @@ def _severity_from_scores(shape: float, intensity: float) -> str:
     if avg < 0.75:
         return "medium"
     return "low"
+
+
+async def _load_existing_pair_fingerprints(
+    db: AsyncSession, driver_id: UUID
+) -> set[frozenset[str]]:
+    """T027/T030 — pre-load every TransferLink the driver owns
+    into a set of frozenset fingerprints, so dedup is O(1) per
+    item. The bulk endpoint loads this once and mutates the set
+    as items succeed (within-batch dedup); the single endpoint
+    loads it once and discards."""
+    rows = (
+        (
+            await db.execute(
+                select(TransferLinkRow.session_pair).where(
+                    TransferLinkRow.driver_id == driver_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {frozenset(str(s) for s in pair) for pair in rows}
+
+
+async def _stage_link(
+    db: AsyncSession,
+    *,
+    profile: DriverProfileRow,
+    body: TransferLinkCreate,
+    item_sessions: list[SessionRow],
+    existing_pairs: set[frozenset[str]],
+) -> tuple[TransferLinkSchema, frozenset[str]]:
+    """Single-item create logic, shared by the single and bulk
+    endpoints. Validates (T026), dedups against the supplied
+    existing_pairs set (T027 + within-batch), stages an insight
+    (T028), stages the link, and returns the response schema +
+    the new pair's fingerprint (so the caller can update its
+    dedup set when looping a batch).
+
+    Caller commits.
+    """
+    await _validate_pair_bridgeable(db, item_sessions)
+
+    new_pair = frozenset(str(s) for s in body.session_pair)
+    if new_pair in existing_pairs:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="duplicate_link",
+        )
+
+    link_id = uuid6.uuid7()
+    created_at = datetime.now(UTC)
+    primary_session_id = UUID(str(body.session_pair[0]))
+    insight_id = uuid6.uuid7()
+    db.add(
+        CoachingInsightRow(
+            id=insight_id,
+            session_id=primary_session_id,
+            driver_id=profile.id,
+            created_at=created_at,
+            rule_id="bridge.link_created",
+            rule_version="v1",
+            observation=_summarize_transfer(body),
+            evidence=[str(s) for s in body.session_pair],
+            likely_cause=None,
+            severity=_severity_from_scores(
+                body.shape_match_score, body.intensity_match_score
+            ),
+            confidence=(
+                body.shape_match_score + body.intensity_match_score
+            )
+            / 2.0,
+            corner_tag=None,
+            suggested_prescription_id=None,
+        )
+    )
+    db.add(
+        TransferLinkRow(
+            id=link_id,
+            driver_id=profile.id,
+            created_at=created_at,
+            created_by=body.created_by,
+            session_pair=[str(s) for s in body.session_pair],
+            link_reason=body.link_reason,
+            shape_match_score=body.shape_match_score,
+            intensity_match_score=body.intensity_match_score,
+            divergence_points=[
+                dp.model_dump(mode="json") for dp in body.divergence_points
+            ],
+            transferred_skills=list(body.transferred_skills),
+            non_transferred_skills=list(body.non_transferred_skills),
+            generated_report_id=insight_id,
+        )
+    )
+
+    schema = TransferLinkSchema(
+        id=link_id,
+        driver_id=profile.id,
+        created_at=created_at,
+        created_by=body.created_by,
+        session_pair=body.session_pair,
+        link_reason=body.link_reason,
+        shape_match_score=body.shape_match_score,
+        intensity_match_score=body.intensity_match_score,
+        divergence_points=body.divergence_points,
+        transferred_skills=body.transferred_skills,
+        non_transferred_skills=body.non_transferred_skills,
+        generated_report_id=insight_id,
+    )
+    return schema, new_pair
 
 
 async def _validate_pair_bridgeable(
