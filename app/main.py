@@ -19,6 +19,7 @@ from app.routers import coaching as coaching_router
 from app.routers import compare_cases as compare_cases_router
 from app.routers import devices as devices_router
 from app.routers import driver_profile as driver_profile_router
+from app.routers import endurance as endurance_router
 from app.routers import insights as insights_router
 from app.routers import jobs as jobs_router
 from app.routers import me as me_router
@@ -99,6 +100,7 @@ app.include_router(coaching_router.router)
 app.include_router(compare_cases_router.router)
 app.include_router(devices_router.router)
 app.include_router(driver_profile_router.router)
+app.include_router(endurance_router.router)
 app.include_router(insights_router.router)
 app.include_router(jobs_router.router)
 app.include_router(me_router.router)
