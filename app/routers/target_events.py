@@ -17,7 +17,12 @@ from uuid import UUID
 
 import uuid6
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from lap_schemas.v1 import TargetEvent, TargetEventCreate, TargetEventList
+from lap_schemas.v1 import (
+    TargetEvent,
+    TargetEventCreate,
+    TargetEventList,
+    TrackDayCreate,
+)
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -168,3 +173,54 @@ async def list_target_events(
     return TargetEventList(
         target_events=tuple(_to_response(row) for row in rows),
     )
+
+
+@driver_router.post(
+    "/track-days",
+    response_model=TargetEvent,
+    status_code=status.HTTP_201_CREATED,
+    responses={404: {"description": "driver_not_found"}},
+)
+async def create_track_day(
+    payload: TrackDayCreate,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TargetEvent:
+    """T088 — manual real-life event add. UX-friendly wrapper
+    over the TargetEvent table: takes a free-text venue_name
+    (no catalog FK required), persists with kind=real_track_day.
+    venue_name is folded into the event's `name` so the GET
+    list surfaces it without TargetEvent needing a dedicated
+    venue column.
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfile).where(DriverProfile.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+
+    row = TargetEventRow(
+        id=uuid6.uuid7(),
+        driver_id=profile.id,
+        # Fold venue into the event name so the existing
+        # TargetEvent shape carries the real-life context
+        # without a schema migration. "Track day @ Venue"
+        # makes the source visible to GET-list consumers.
+        name=f"Track day @ {payload.venue_name}",
+        kind="real_track_day",
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        track_id=None,
+        car_id=None,
+        competitive_weight=payload.competitive_weight,
+        notes=payload.notes,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _to_response(row)
