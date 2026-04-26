@@ -58,12 +58,21 @@ async def upsert_weakness_episode(
     existing = (await db.execute(stmt)).scalar_one_or_none()
 
     if existing is not None:
-        existing.recurrence_count += 1
-        existing.last_observed_at = now
-        existing.sessions_affected = [
-            *existing.sessions_affected,
-            str(insight_row.session_id),
-        ]
+        # T210 — recurrence = a new occurrence in TIME, not a
+        # re-process of the same session. Celery retries land
+        # here with a fresh insight row but a session_id that's
+        # already in sessions_affected — must not double-count.
+        # linked_insights still appends so the audit trail stays
+        # complete (insight rows are 1:1 with persist runs).
+        session_str = str(insight_row.session_id)
+        is_new_session = session_str not in existing.sessions_affected
+        if is_new_session:
+            existing.recurrence_count += 1
+            existing.last_observed_at = now
+            existing.sessions_affected = [
+                *existing.sessions_affected,
+                session_str,
+            ]
         existing.linked_insights = [
             *existing.linked_insights,
             str(insight_row.id),
