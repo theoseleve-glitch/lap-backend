@@ -30,13 +30,18 @@ import numpy as np
 from domain.channel_extractor import CHANNELS, ChannelFrame
 
 
-def intensity_match_score(a: ChannelFrame, b: ChannelFrame) -> float:
+def intensity_match_per_channel(
+    a: ChannelFrame, b: ChannelFrame
+) -> dict[str, float]:
+    """Per-channel mean(peak_ratio, integ_ratio) — same exclusion
+    rules as the frame-level score (NaN, both-sides-zero). Insertion
+    order is canonical CHANNELS order."""
     if len(a) != len(b):
         raise ValueError(
             f"frame lengths differ: {len(a)} vs {len(b)}"
         )
 
-    scores: list[float] = []
+    out: dict[str, float] = {}
     for name in CHANNELS:
         ya = np.asarray(getattr(a, name), dtype=float)
         yb = np.asarray(getattr(b, name), dtype=float)
@@ -53,16 +58,17 @@ def intensity_match_score(a: ChannelFrame, b: ChannelFrame) -> float:
         peak_ratio = min(peak_a, peak_b) / max(peak_a, peak_b)
         integ_a = float(abs_a.sum())
         integ_b = float(abs_b.sum())
-        # If both peaks are non-zero, both integrals are too —
-        # min/max is well-defined. If one peak is non-zero and the
-        # other is zero, integ on that side is zero too → ratio 0.
         integ_ratio = (
             min(integ_a, integ_b) / max(integ_a, integ_b)
             if max(integ_a, integ_b) > 0.0
             else 0.0
         )
-        scores.append((peak_ratio + integ_ratio) / 2.0)
+        out[name] = (peak_ratio + integ_ratio) / 2.0
+    return out
 
+
+def intensity_match_score(a: ChannelFrame, b: ChannelFrame) -> float:
+    scores = list(intensity_match_per_channel(a, b).values())
     if not scores:
         return 0.0
     return sum(scores) / len(scores)

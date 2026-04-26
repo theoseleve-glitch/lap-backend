@@ -22,13 +22,21 @@ import numpy as np
 from domain.channel_extractor import CHANNELS, ChannelFrame
 
 
-def shape_match_score(a: ChannelFrame, b: ChannelFrame) -> float:
+def shape_match_per_channel(
+    a: ChannelFrame, b: ChannelFrame
+) -> dict[str, float]:
+    """Per-channel Pearson r at lag 0 (clipped to [0, 1]).
+
+    Excluded channels (NaN-poisoned, zero variance) are absent from
+    the dict — same exclusion rule as shape_match_score's average.
+    Insertion order is canonical CHANNELS order so callers can rely
+    on positional iteration.
+    """
     if len(a) != len(b):
         raise ValueError(
             f"frame lengths differ: {len(a)} vs {len(b)}"
         )
-
-    scores: list[float] = []
+    out: dict[str, float] = {}
     for name in CHANNELS:
         ya = np.asarray(getattr(a, name), dtype=float)
         yb = np.asarray(getattr(b, name), dtype=float)
@@ -37,8 +45,12 @@ def shape_match_score(a: ChannelFrame, b: ChannelFrame) -> float:
         if ya.std() == 0.0 or yb.std() == 0.0:
             continue
         r = float(np.corrcoef(ya, yb)[0, 1])
-        scores.append(max(0.0, r))
+        out[name] = max(0.0, r)
+    return out
 
+
+def shape_match_score(a: ChannelFrame, b: ChannelFrame) -> float:
+    scores = list(shape_match_per_channel(a, b).values())
     if not scores:
         return 0.0
     return sum(scores) / len(scores)
