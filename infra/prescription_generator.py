@@ -20,6 +20,7 @@ later task; for now the operator can adjust manually.
 """
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 import uuid6
@@ -27,9 +28,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coaching.library.rule_schema import RuleSpec
+from domain.target_match import compute_target_aware_priority
 from infra.orm import ActionPrescription, WeaknessEpisode
 
-_DEFAULT_PRIORITY = "p1"
 _INITIAL_STATUS = "proposed"
 
 
@@ -59,10 +60,20 @@ async def generate_prescription_for_episode(
     episode: WeaknessEpisode,
     rule: RuleSpec,
     now: datetime,
+    target_event: dict[str, Any] | None = None,
+    candidate_track_id: UUID | None = None,
+    candidate_car_id: UUID | None = None,
 ) -> UUID:
     """Create one ActionPrescription for `episode`, return its id.
     Idempotent: if a prescription already exists for this episode,
-    return the existing id without inserting a second row."""
+    return the existing id without inserting a second row.
+
+    T090: when target_event + candidate_track_id/car_id are
+    provided AND match the pinned event, priority is bumped
+    from "p1" to "p0". All three kwargs default to None for
+    backwards-compatibility with callers that don't yet thread
+    target context through.
+    """
     existing_id = (
         await db.execute(
             select(ActionPrescription.id).where(
@@ -73,13 +84,18 @@ async def generate_prescription_for_episode(
     if existing_id is not None:
         return existing_id
     new_id = uuid6.uuid7()
+    priority = compute_target_aware_priority(
+        target_event=target_event,
+        candidate_track_id=candidate_track_id,
+        candidate_car_id=candidate_car_id,
+    )
     db.add(
         ActionPrescription(
             id=new_id,
             driver_id=episode.driver_id,
             weakness_episode_id=episode.id,
             created_at=now,
-            priority=_DEFAULT_PRIORITY,
+            priority=priority,
             title=_title(rule),
             rationale=_rationale(rule, episode),
             expected_context={},
