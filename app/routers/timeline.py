@@ -1,11 +1,13 @@
-"""T001 (sprint2-backend) — GET /api/v1/driver/timeline.
+"""T001/T002 (sprint2-backend) — GET /api/v1/driver/timeline.
 
 Returns the authenticated driver's session records, newest first,
 with achievement badges (currently: `personal_best`).
 
-Cursor encoding is offset-based for T001 — opaque on the wire so
-T002 can swap it for a hashed token without breaking clients.
-The contract is "string in, string out, null = no more pages".
+Cursor (T002): time-anchored, base64-encoded, sha256-tagged token
+bound to the caller's user_id. See `app/cursor.py`. Pagination
+is keyset-style (`WHERE created_at < last_seen_at`) rather than
+offset-based — stable across concurrent inserts and resistant
+to forgery from another caller.
 
 Cross-driver isolation is enforced by joining `sessions` to
 `driver_profiles` on the caller's `User.id`. The DB-level RLS
@@ -23,6 +25,7 @@ from lap_schemas.v1 import TimelineEntry, TimelineResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.cursor import decode_cursor, encode_cursor
 from app.deps import get_current_user, get_db
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
@@ -36,23 +39,6 @@ _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 100
 
 
-def _decode_cursor(cursor: str | None) -> int:
-    """Cursor format for T001 is `<offset>` as a decimal string.
-    Opaque to clients — they only echo what `next_cursor` returned.
-    T002 will swap to a hashed format with the same wire shape."""
-    if cursor is None or cursor == "":
-        return 0
-    try:
-        offset = int(cursor)
-    except ValueError:
-        return 0
-    return max(offset, 0)
-
-
-def _encode_cursor(offset: int) -> str:
-    return str(offset)
-
-
 @router.get("/timeline", response_model=TimelineResponse)
 async def get_driver_timeline(
     user: Annotated[UserRow, Depends(get_current_user)],
@@ -60,7 +46,12 @@ async def get_driver_timeline(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
 ) -> TimelineResponse:
-    offset = _decode_cursor(cursor)
+    # T002 — decode caller-bound cursor. None / invalid / forged →
+    # treated as "no cursor" (start from the top), failing closed
+    # by silently restarting rather than 401-ing on stale tokens.
+    last_seen_at = (
+        decode_cursor(user.id, cursor) if cursor is not None else None
+    )
 
     # Resolve the caller's driver_id once. A user with no
     # DriverProfile row has no sessions by definition.
@@ -80,9 +71,11 @@ async def get_driver_timeline(
         select(SessionRow.id, SessionRow.created_at, SessionRecordRow.payload)
         .join(SessionRecordRow, SessionRecordRow.session_id == SessionRow.id)
         .where(SessionRow.driver_id == driver_id)
-        .order_by(SessionRow.created_at.desc())
-        .offset(offset)
-        .limit(limit + 1)
+    )
+    if last_seen_at is not None:
+        page_query = page_query.where(SessionRow.created_at < last_seen_at)
+    page_query = page_query.order_by(SessionRow.created_at.desc()).limit(
+        limit + 1
     )
     rows = (await db.execute(page_query)).all()
     has_more = len(rows) > limit
@@ -107,7 +100,8 @@ async def get_driver_timeline(
             pb_value = candidate
 
     entries: list[TimelineEntry] = []
-    for session_id, _created_at, payload in page_rows:
+    last_created_at = None
+    for session_id, created_at, payload in page_rows:
         payload_dict: dict[str, Any] = payload or {}
         row_best = payload_dict.get("best_lap_ms")
         badges: list[str] = []
@@ -123,8 +117,15 @@ async def get_driver_timeline(
                 badges=badges,
             )
         )
+        last_created_at = created_at
 
-    next_cursor = _encode_cursor(offset + limit) if has_more else None
+    # T002 — mint next_cursor anchored to the last row's created_at
+    # so resume issues `WHERE created_at < last`, not `OFFSET N`.
+    next_cursor = (
+        encode_cursor(user.id, last_created_at)
+        if has_more and last_created_at is not None
+        else None
+    )
     return TimelineResponse(entries=entries, next_cursor=next_cursor)
 
 
