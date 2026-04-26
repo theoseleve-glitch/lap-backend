@@ -1,0 +1,20 @@
+# T233 — Dependabot owns the GitHub Actions ecosystem only.
+# Python deps are managed by Renovate (see .github/renovate.json)
+# because Renovate handles the uv/pep621 lockfile flow that
+# Dependabot does not natively understand. Splitting ecosystems
+# avoids duplicate update PRs from both tools.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci(deps)"
+    open-pull-requests-limit: 5

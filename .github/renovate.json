@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":enableVulnerabilityAlertsWithLabel(security)"
+  ],
+  "enabledManagers": ["pep621"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "UTC",
+  "labels": ["dependencies", "python"],
+  "commitMessagePrefix": "deps:",
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Group all non-major Python deps into one PR per week so review effort scales sub-linearly with dep count.",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "python deps (non-major)"
+    },
+    {
+      "description": "Major bumps go individually so each can be reviewed for breaking changes.",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["dependencies", "python", "major-bump"]
+    }
+  ]
+}
