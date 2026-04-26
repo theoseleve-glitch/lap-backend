@@ -13,11 +13,12 @@ this same `driver_router`.
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 import uuid6
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from lap_schemas.v1 import TargetEvent, TargetEventCreate
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
@@ -87,3 +88,50 @@ async def create_target_event(
     await db.commit()
     await db.refresh(row)
     return _to_response(row)
+
+
+@driver_router.delete(
+    "/target-events/{event_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        404: {
+            "description": (
+                "driver_not_found OR target_event_not_found "
+                "(same status for either to avoid enumeration)"
+            )
+        },
+    },
+)
+async def delete_target_event(
+    event_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    profile = (
+        await db.execute(
+            select(DriverProfile).where(DriverProfile.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+    # Authz pin: filter by BOTH id and driver_id so an authenticated
+    # user can never delete another driver's pin by guessing UUIDs.
+    # rowcount==0 means either "no such pin" or "exists but belongs
+    # to someone else"; surface the same 404 either way to avoid
+    # leaking which UUIDs are valid pins.
+    result = await db.execute(
+        delete(TargetEventRow).where(
+            TargetEventRow.id == event_id,
+            TargetEventRow.driver_id == profile.id,
+        )
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="target_event_not_found",
+        )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
