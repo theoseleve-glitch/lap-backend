@@ -114,3 +114,56 @@ async def create_bridge_link(
         non_transferred_skills=body.non_transferred_skills,
         generated_report_id=body.generated_report_id,
     )
+
+
+# T020 (sprint2-backend) — full TransferLink for one bridge link
+# the authenticated driver owns. 404-not-403 cross-driver
+# isolation: same posture as get_session, so callers can't probe
+# other drivers' link ids.
+@router.get(
+    "/links/{link_id}",
+    response_model=TransferLinkSchema,
+    responses={404: {"description": "transfer_link_not_found"}},
+)
+async def get_bridge_link(
+    link_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TransferLinkSchema:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    row = (
+        await db.execute(
+            select(TransferLinkRow).where(
+                TransferLinkRow.id == link_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or profile is None or row.driver_id != profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="transfer_link_not_found",
+        )
+    return _row_to_schema(row)
+
+
+def _row_to_schema(row: TransferLinkRow) -> TransferLinkSchema:
+    return TransferLinkSchema(
+        id=row.id,
+        driver_id=row.driver_id,
+        created_at=row.created_at,
+        created_by=row.created_by,
+        session_pair=tuple(UUID(s) for s in row.session_pair),
+        link_reason=row.link_reason,
+        shape_match_score=row.shape_match_score,
+        intensity_match_score=row.intensity_match_score,
+        divergence_points=tuple(row.divergence_points or []),
+        transferred_skills=tuple(row.transferred_skills or []),
+        non_transferred_skills=tuple(row.non_transferred_skills or []),
+        generated_report_id=row.generated_report_id,
+    )
