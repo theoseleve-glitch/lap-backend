@@ -81,6 +81,7 @@ app.include_router(jobs_router.router)
 app.include_router(me_router.router)
 app.include_router(pairing_router.router)
 app.include_router(prescriptions_router.router)
+app.include_router(prescriptions_router.driver_router)
 app.include_router(sessions_router.router)
 app.include_router(webhooks_router.router)
 
