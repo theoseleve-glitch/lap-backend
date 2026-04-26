@@ -29,7 +29,9 @@ from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
+import fakeredis
 import httpx
 import jwt
 import pytest
@@ -38,9 +40,10 @@ from alembic.config import Config as AlembicConfig
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from alembic import command
-from app.deps import get_db, get_jwks_client
+from app.deps import get_db, get_jwks_client, get_suggest_cache
 from app.main import app
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
@@ -53,6 +56,7 @@ from infra.orm import (
 from infra.orm import (
     Session as SessionRow,
 )
+from infra.suggest_cache import SuggestCache
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
@@ -106,10 +110,16 @@ def configured_app(
             "https://test.clerk", transport=httpx.MockTransport(handler)
         )
 
+    cache = SuggestCache(fakeredis.FakeRedis())
+
+    def fake_suggest_cache() -> SuggestCache:
+        return cache
+
     app.dependency_overrides[get_db] = fake_get_db
     app.dependency_overrides[get_jwks_client] = fake_jwks_client
+    app.dependency_overrides[get_suggest_cache] = fake_suggest_cache
     try:
-        yield {"keys": keys, "factory": factory}
+        yield {"keys": keys, "factory": factory, "cache": cache}
     finally:
         app.dependency_overrides.clear()
 
@@ -429,3 +439,106 @@ def test_full_ordering_same_track_then_recency(
         str(seed["in_window_future"]),
         str(seed["in_window_past"]),
     ]
+
+
+# -- T048: 1h TTL cache -------------------------------------------
+
+
+async def _add_extra_candidate(factory: Any, seed: dict[str, Any]) -> UUID:
+    """Insert a fresh same-track candidate after the first call —
+    used to prove the cached response stays put."""
+    new_session_id = uuid6.uuid7()
+    # Reuse the source's track + car so the new session would match
+    # all suggest filters if the endpoint re-queried the DB.
+    async with factory() as db:
+        source = (
+            await db.execute(
+                select(SessionRow).where(SessionRow.id == seed["source_id"])
+            )
+        ).scalar_one()
+        db.add(
+            SessionRow(
+                id=new_session_id,
+                driver_id=source.driver_id,
+                manifest=dict(source.manifest),
+                created_at=_T0 - timedelta(days=5),
+                status="ready",
+            )
+        )
+        await db.commit()
+    return new_session_id
+
+
+def test_cache_miss_populates_redis_for_subsequent_calls(
+    configured_app: dict[str, Any],
+) -> None:
+    """First call writes the response into the cache under the
+    bridge_suggest:<session_id> key — the storage primitive used
+    for replays on subsequent calls."""
+    seed = asyncio.run(_seed(configured_app["factory"], clerk_user_id="alice"))
+    cache: SuggestCache = configured_app["cache"]
+    assert cache.get(seed["source_id"]) is None
+    with TestClient(app) as client:
+        first = _get(client, configured_app, "alice", seed["source_id"])
+    assert first.status_code == 200
+    assert cache.get(seed["source_id"]) is not None
+
+
+def test_cache_hit_returns_cached_response_after_db_mutation(
+    configured_app: dict[str, Any],
+) -> None:
+    """Behavioral proof of caching: insert a fresh matching session
+    between the two calls. Without caching the response would now
+    include the new session; with caching, the response is byte-
+    identical to the first call. The 1h TTL is the staleness
+    budget — fresh inserts take effect after expiry, not sooner."""
+    seed = asyncio.run(_seed(configured_app["factory"], clerk_user_id="alice"))
+    with TestClient(app) as client:
+        first = _get(client, configured_app, "alice", seed["source_id"])
+
+    # Mutate DB: add a new candidate that would match all filters.
+    asyncio.run(
+        _add_extra_candidate(configured_app["factory"], seed)
+    )
+
+    with TestClient(app) as client:
+        second = _get(client, configured_app, "alice", seed["source_id"])
+
+    assert first.json() == second.json()
+
+
+def test_cache_keyed_per_source_session(
+    configured_app: dict[str, Any],
+) -> None:
+    """Different source sessions have independent cache entries —
+    a hit for one source must not leak into another."""
+    asyncio.run(_seed(configured_app["factory"], clerk_user_id="alice"))
+    bob_seed = asyncio.run(
+        _seed(configured_app["factory"], clerk_user_id="bob")
+    )
+    cache: SuggestCache = configured_app["cache"]
+    with TestClient(app) as client:
+        # Populate cache for bob's source.
+        _get(client, configured_app, "bob", bob_seed["source_id"])
+    # Bob's cache populated, but a different session_id should miss.
+    other_session = uuid6.uuid7()
+    assert cache.get(bob_seed["source_id"]) is not None
+    assert cache.get(other_session) is None
+
+
+def test_cache_does_not_bypass_404_for_other_drivers_session(
+    configured_app: dict[str, Any],
+) -> None:
+    """Even if Alice has populated the cache for her own source,
+    Bob requesting Alice's session_id must still 404 — the cache
+    lookup happens after ownership check."""
+    alice_seed = asyncio.run(
+        _seed(configured_app["factory"], clerk_user_id="alice")
+    )
+    asyncio.run(_seed(configured_app["factory"], clerk_user_id="bob"))
+    with TestClient(app) as client:
+        # Alice populates her cache.
+        _get(client, configured_app, "alice", alice_seed["source_id"])
+        # Bob tries to read it.
+        resp = _get(client, configured_app, "bob", alice_seed["source_id"])
+    assert resp.status_code == 404

@@ -20,6 +20,7 @@ from infra.idempotency_cache import IdempotencyCache
 from infra.job_event_bus import InMemoryJobEventBus, JobEventBusProtocol
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
+from infra.suggest_cache import SuggestCache
 from infra.posthog import PosthogClientProtocol, make_posthog_client
 from infra.storage import BlobStoreProtocol, LocalBlobStore, R2BlobStore
 from infra.task_dispatcher import InMemoryTaskDispatcher, TaskDispatcherProtocol
@@ -57,6 +58,12 @@ def get_pairing_store() -> PairingStoreProtocol:
 def get_idempotency_cache() -> IdempotencyCache:
     client = redis.Redis.from_url(get_config().redis_url)
     return IdempotencyCache(client)
+
+
+@lru_cache
+def get_suggest_cache() -> SuggestCache:
+    client = redis.Redis.from_url(get_config().redis_url)
+    return SuggestCache(client)
 
 
 @lru_cache

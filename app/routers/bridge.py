@@ -37,7 +37,7 @@ from lap_schemas.v1 import TransferLink as TransferLinkSchema
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_current_user, get_db
+from app.deps import get_current_user, get_db, get_suggest_cache
 from infra.orm import CarModel as CarModelRow
 from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
@@ -45,6 +45,7 @@ from infra.orm import Session as SessionRow
 from infra.orm import TrackLayout as TrackLayoutRow
 from infra.orm import TransferLink as TransferLinkRow
 from infra.orm import User as UserRow
+from infra.suggest_cache import SuggestCache
 
 router = APIRouter(prefix="/api/v1/bridge", tags=["bridge"])
 # T021 — second router so the driver-scoped path
@@ -615,6 +616,7 @@ async def suggest_bridge_links(
     session_id: Annotated[UUID, Query()],
     user: Annotated[UserRow, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    cache: Annotated[SuggestCache, Depends(get_suggest_cache)],
 ) -> BridgeSuggestLinkList:
     profile = (
         await db.execute(
@@ -641,6 +643,13 @@ async def suggest_bridge_links(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="session_not_found",
         )
+
+    # T048: cache hit short-circuits the catalog joins. Lookup is
+    # AFTER ownership check so a 404 on cross-driver access can't be
+    # bypassed by a poisoned cache entry.
+    cached = cache.get(session_id)
+    if cached is not None:
+        return BridgeSuggestLinkList.model_validate_json(cached)
 
     src_track_raw = (source.manifest or {}).get("track_id")
     src_car_raw = (source.manifest or {}).get("car_id")
@@ -770,7 +779,9 @@ async def suggest_bridge_links(
             -x[2].timestamp(),
         )
     )
-    return BridgeSuggestLinkList(
+    response = BridgeSuggestLinkList(
         source_session_id=session_id,
         candidates=tuple(c for c, _, _ in matched_meta),
     )
+    cache.put(session_id, response.model_dump_json().encode())
+    return response
