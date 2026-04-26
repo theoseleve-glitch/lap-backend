@@ -86,6 +86,16 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.nightly_rule_fp_audit",
         "schedule": crontab(hour=3, minute=15),
     },
+    # T063 (sprint2) — weekly Monday 04:00 UTC cohort benchmark
+    # refresh. Recomputes DriverBenchmarkProfile rows for every
+    # opt-in driver against their first eligible (car, track)
+    # cohort. 04:00 sits after the 02:00 backup and the 03:xx
+    # nightly aggregation block, so this snapshot reads quiet
+    # state. Idempotent — re-running updates rows in place.
+    "weekly-cohort-refresh": {
+        "task": "infra.celery_app.weekly_cohort_refresh",
+        "schedule": crontab(hour=4, minute=0, day_of_week=1),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -483,3 +493,49 @@ def daily_pg_backup() -> str:
     )
     logger.info("pg_backup.completed", key=key)
     return key
+
+
+async def _run_cohort_refresh() -> int:
+    """T063 — iterate every opt-in driver, refresh their
+    DriverBenchmarkProfile via domain.cohort_refresh. Returns
+    count of refreshed profiles. Idempotent — re-running updates
+    rows in place per refresh_driver_benchmark_profile contract."""
+    from domain.cohort_refresh import refresh_driver_benchmark_profile
+    from infra.orm import DriverProfile
+
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            opt_in_drivers = (
+                (
+                    await db.execute(
+                        select(DriverProfile).where(
+                            DriverProfile.cohort_opt_in.is_(True)
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            refreshed = 0
+            for driver in opt_in_drivers:
+                row = await refresh_driver_benchmark_profile(
+                    db, driver_id=driver.id
+                )
+                if row is not None:
+                    refreshed += 1
+            await db.commit()
+            return refreshed
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.weekly_cohort_refresh")  # type: ignore[untyped-decorator]
+def weekly_cohort_refresh() -> str:
+    """Beat-triggered weekly Monday 04:00 UTC. Recomputes
+    DriverBenchmarkProfile rows for every opt-in driver."""
+    n = asyncio.run(_run_cohort_refresh())
+    logger.info("cohort_refresh.completed", refreshed=n)
+    return f"refreshed={n}"
