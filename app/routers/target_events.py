@@ -27,6 +27,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from domain.readiness_recompute import recompute_driver_readiness
 from infra.orm import DriverProfile
 from infra.orm import TargetEvent as TargetEventRow
 from infra.orm import User as UserRow
@@ -92,6 +93,9 @@ async def create_target_event(
     db.add(row)
     await db.commit()
     await db.refresh(row)
+    # T089 — readiness must reflect the new pin so T090's plan
+    # generation reads target-aware inputs on the next request.
+    await recompute_driver_readiness(db, driver_id=profile.id)
     return _to_response(row)
 
 
@@ -139,6 +143,9 @@ async def delete_target_event(
             detail="target_event_not_found",
         )
     await db.commit()
+    # T089 — readiness must reflect the unpin (target_event=None
+    # if no remaining pins, or the next-soonest one).
+    await recompute_driver_readiness(db, driver_id=profile.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -223,4 +230,6 @@ async def create_track_day(
     db.add(row)
     await db.commit()
     await db.refresh(row)
+    # T089 — readiness recompute (track-day uses same hook).
+    await recompute_driver_readiness(db, driver_id=profile.id)
     return _to_response(row)
