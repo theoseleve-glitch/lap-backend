@@ -1,0 +1,37 @@
+id: "enduro.tire.preservation_low"
+version: 1
+category: strategy
+subcategory: tire_preservation
+difficulty: intermediate
+
+detection:
+  signal: stint_tire_preservation_score
+  condition: "stint_tire_preservation_score < 0.4"
+  context:
+    must_have_channels: ["lap_time", "fuel_used", "stint_index"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.40 = low, 0.25 = medium, 0.15 = high"
+
+explanation_template:
+  beginner: "Tire preservation score on stint {{stint_index}} was {{preservation_score}} (out of 1.0). The combination of fuel burn and pace drop says you were too aggressive — leave more margin in fast corners."
+  intermediate: "Preservation = {{preservation_score}} on stint {{stint_index}}. Both fuel-per-lap ({{fuel_per_lap}} L) and pace decay ({{decay_per_lap_seconds}} s/lap) are above their endurance ceilings. Trim throttle on traction zones."
+  advanced: "Composite tire score {{preservation_score}} (fuel sub {{fuel_subscore}}, decay sub {{decay_subscore}}). The min-aggregator flagged the weaker dimension — review which of fuel input or thermal degradation is the limiter and address that one specifically."
+
+prescription:
+  drill_template_id: "drill.long_run_tire_conservation"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "stint_tire_preservation_score"
+    comparison: "gte"
+    target_pct: 0.60
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["fuel-burn signal in sim is exact; real-world fuel readings via OBD or tank sensor are noisier and may show false-positive preservation flags"]

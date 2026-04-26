@@ -1,0 +1,32 @@
+id: "enduro.stint_management.short_stint_unplanned"
+version: 1
+category: strategy
+subcategory: stint_planning
+difficulty: intermediate
+
+detection:
+  signal: stint_lap_count
+  condition: "stint_lap_count < 8"
+  context:
+    must_have_channels: ["lap_number", "stint_index", "fcy_flag"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 8 = low, 5 = medium, 3 = high"
+
+explanation_template:
+  beginner: "Stint {{stint_index}} was only {{stint_lap_count}} laps and there was no full-course-yellow to justify it. Pitting too early throws away tire life — try to extend stints to at least the planned window."
+  intermediate: "Unplanned short stint of {{stint_lap_count}} laps (stint {{stint_index}}). If not strategy-driven this costs a full pit window vs. the optimal plan. Confirm the pit decision wasn't damage- or weather-driven before practicing this."
+  advanced: "Stint {{stint_index}} length = {{stint_lap_count}} (vs. target {{target_stint_lap_count}}). Decision made at lap {{pit_in_lap}} with no concurrent FCY/SC event in the timeline — review with engineer; over a 12h race a short stint = +1 fuel stop."
+
+prescription:
+  drill_template_id: "drill.stint_target_planning"
+  expected_gain_kmh: "0-0"
+  success_condition:
+    metric: "stint_lap_count"
+    comparison: "gte"
+    target_pct: 1.0
+    measurement_window: "next_3_sessions"

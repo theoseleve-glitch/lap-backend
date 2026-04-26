@@ -151,6 +151,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     "sector": "S1",
     "cov_pct": 20,
     "ratio_pct": 170,
+    # T074 endurance signals at preservation values (rules silent).
+    # Without these the runner raises KeyError when evaluating any
+    # endurance rule against this braking-only context.
+    "stint_pace_decay_seconds_per_lap": 0.0,
+    "stint_tire_preservation_score": 1.0,
+    "stint_closing_window_consistency_seconds": 0.0,
+    "stint_fuel_used_per_lap_liters": 0.0,
+    "stint_lap_count": 100,
 }
 
 # A context where every braking rule should be silent — values
@@ -170,6 +178,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     "rear_front_slip_ratio_entry": 1.10,
     "brake_release_position_pct": 0.85,
     "peak_decel_grip_ratio": 0.95,
+    # T074 endurance signals at preservation values (rules silent).
+    "stint_pace_decay_seconds_per_lap": 0.0,
+    "stint_tire_preservation_score": 1.0,
+    "stint_closing_window_consistency_seconds": 0.0,
+    "stint_fuel_used_per_lap_liters": 0.0,
+    "stint_lap_count": 100,
 }
 
 

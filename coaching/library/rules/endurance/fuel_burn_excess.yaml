@@ -1,0 +1,37 @@
+id: "enduro.fuel.burn_above_target"
+version: 1
+category: strategy
+subcategory: fuel_management
+difficulty: beginner
+
+detection:
+  signal: stint_fuel_used_per_lap_liters
+  condition: "stint_fuel_used_per_lap_liters > 4.0"
+  context:
+    must_have_channels: ["fuel_used", "lap_number", "stint_index"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 4.0 = low, 4.3 = medium, 4.5 = high"
+
+explanation_template:
+  beginner: "You're burning {{fuel_per_lap}} L per lap on stint {{stint_index}}. That's high for endurance — short-shift on the long straights and you'll save a stint over a 6-hour run."
+  intermediate: "Fuel per lap = {{fuel_per_lap}} L on stint {{stint_index}}. Above the 4.0 L/lap reference. Lift-and-coast into the slowest corners; the time loss is sub-tenth and the fuel save is over half a litre per lap."
+  advanced: "{{fuel_per_lap}} L/lap on stint {{stint_index}} — projected stint cost = {{projected_stint_fuel}} L vs. target {{target_stint_fuel}} L. Apply lift-coast on long deceleration zones; over a 24h race this is one entire stop."
+
+prescription:
+  drill_template_id: "drill.lift_and_coast_target_zones"
+  expected_gain_kmh: "0-0"
+  success_condition:
+    metric: "stint_fuel_used_per_lap_liters"
+    comparison: "lte"
+    target_pct: 0.95
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim fuel-mass effect on lap time is approximate; real cars feel the weight difference more sharply over a stint"]

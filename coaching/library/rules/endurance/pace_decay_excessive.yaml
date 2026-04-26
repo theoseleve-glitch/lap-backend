@@ -1,0 +1,37 @@
+id: "enduro.stint_management.pace_decay_excessive"
+version: 1
+category: strategy
+subcategory: pace_decay
+difficulty: intermediate
+
+detection:
+  signal: stint_pace_decay_seconds_per_lap
+  condition: "stint_pace_decay_seconds_per_lap > 0.15"
+  context:
+    must_have_channels: ["lap_time", "lap_number", "stint_index"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.15 = low, 0.30 = medium, 0.50 = high"
+
+explanation_template:
+  beginner: "Your lap times in stint {{stint_index}} are getting slower by {{decay_per_lap_ms}} ms per lap. The tires are giving up — try to lift earlier in the long corners and save them for the next stint."
+  intermediate: "Pace decay of {{decay_per_lap_seconds}} s/lap across stint {{stint_index}}. Likely thermal or wear-driven. Reduce throttle aggression on traction zones; aim for a flatter time-on-tire profile."
+  advanced: "OLS slope {{decay_per_lap_seconds}} s/lap on stint {{stint_index}}. Sustained degradation past the warm-up window indicates either over-temperature operation or grain/blistering — adjust line to spread thermal load across both axles."
+
+prescription:
+  drill_template_id: "drill.long_run_pace_management"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "stint_pace_decay_seconds_per_lap"
+    comparison: "lte"
+    target_pct: 0.10
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim tire models vary in degradation realism; some compounds in iRacing show artificially flat wear, masking the slope a real tire would show"]

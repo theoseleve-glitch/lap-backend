@@ -1,0 +1,32 @@
+id: "enduro.stint_management.closing_stint_consistency_drop"
+version: 1
+category: strategy
+subcategory: stint_consistency
+difficulty: intermediate
+
+detection:
+  signal: stint_closing_window_consistency_seconds
+  condition: "stint_closing_window_consistency_seconds > 0.45"
+  context:
+    must_have_channels: ["lap_time", "lap_number", "stint_index"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.45 = low, 0.65 = medium, 1.00 = high"
+
+explanation_template:
+  beginner: "The last laps of stint {{stint_index}} were inconsistent — your lap-time spread was {{closing_stddev_seconds}} s. End-of-stint mistakes are usually concentration, not pace — focus on hitting the same brake markers every lap when you're tired."
+  intermediate: "Closing-window stddev of {{closing_stddev_seconds}} s on stint {{stint_index}}. Either grip is dropping unpredictably (tire phase change) or focus is slipping. Compare your reference brake points lap-over-lap to isolate the cause."
+  advanced: "Sample stddev of last {{window_size}} laps = {{closing_stddev_seconds}} s. Grip-driven variance shows as clustered slow laps; focus-driven variance is sporadic — segment by sector to pinpoint which corner is the noise source."
+
+prescription:
+  drill_template_id: "drill.late_stint_focus_routine"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "stint_closing_window_consistency_seconds"
+    comparison: "lte"
+    target_pct: 0.30
+    measurement_window: "next_3_sessions"
