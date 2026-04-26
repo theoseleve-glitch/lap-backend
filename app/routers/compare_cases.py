@@ -20,13 +20,18 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from lap_schemas.v1 import CompareCase, CompareCaseCreate
+from lap_schemas.v1 import (
+    CompareCase,
+    CompareCaseCreate,
+    CompareCaseSessionSnapshot,
+)
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
 from infra.orm import CompareCase as CompareCaseRow
 from infra.orm import DriverProfile as DriverProfileRow
+from infra.orm import SessionRecord as SessionRecordRow
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/compare_cases", tags=["compare-cases"])
@@ -44,14 +49,62 @@ async def _resolve_driver_id(
     ).scalar_one_or_none()
 
 
-def _serialize(row: CompareCaseRow) -> CompareCase:
+def _serialize(
+    row: CompareCaseRow,
+    *,
+    sessions: tuple[CompareCaseSessionSnapshot, ...] | None = None,
+) -> CompareCase:
     return CompareCase(
         id=row.id,
         driver_id=row.driver_id,
         session_ids=tuple(UUID(s) for s in row.session_ids),
         rationale=row.rationale,
         created_at=row.created_at,
+        sessions=sessions,
     )
+
+
+async def _build_session_snapshot(
+    db: AsyncSession, session_ids: list[str]
+) -> tuple[CompareCaseSessionSnapshot, ...]:
+    """T006 — for each referenced session, fetch the latest
+    SessionRecord and synthesize a per-session snapshot. Sessions
+    without a SessionRecord (still processing) get nulls.
+
+    Recomputed on every GET — no cache to invalidate, so a
+    SessionRecord update is reflected by the next request."""
+    uuid_ids = [UUID(s) for s in session_ids]
+    rows = (
+        (
+            await db.execute(
+                select(SessionRecordRow).where(
+                    SessionRecordRow.session_id.in_(uuid_ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_session: dict[UUID, SessionRecordRow] = {
+        row.session_id: row for row in rows
+    }
+    snapshots: list[CompareCaseSessionSnapshot] = []
+    for sid in uuid_ids:
+        record = by_session.get(sid)
+        if record is None:
+            snapshots.append(CompareCaseSessionSnapshot(session_id=sid))
+            continue
+        payload = record.payload or {}
+        snapshots.append(
+            CompareCaseSessionSnapshot(
+                session_id=sid,
+                processed_at=payload.get("processed_at"),
+                best_lap_ms=payload.get("best_lap_ms"),
+                total_laps=payload.get("total_laps"),
+                valid_laps=payload.get("valid_laps"),
+            )
+        )
+    return tuple(snapshots)
 
 
 async def _load_owned(
@@ -110,7 +163,9 @@ async def get_compare_case(
             detail="compare case not found",
         )
     row = await _load_owned(db, case_id=case_id, driver_id=driver_id)
-    return _serialize(row)
+    # T006 — auto-updating snapshot of referenced SessionRecords.
+    snapshot = await _build_session_snapshot(db, row.session_ids)
+    return _serialize(row, sessions=snapshot)
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
