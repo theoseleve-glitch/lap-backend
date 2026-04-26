@@ -1,10 +1,11 @@
-"""T211 — Prescription generator (skeleton).
+"""T211 — Prescription generator (skeleton). T212 — drill linkage.
 
 Writes one ActionPrescription row linked to the WeaknessEpisode
 that triggered it. T211 nails the basic creation path; T212
-adds drill_template_id, T213 fills success_condition from the
-rule template, T214 adds dedup so the same open episode doesn't
-spawn duplicate prescriptions.
+copies `rule.prescription.drill_template_id` through so the UI
+can deep-link to the drill page. T213 fills success_condition
+from the rule template, T214 adds dedup so the same open
+episode doesn't spawn duplicate prescriptions.
 
 `status='proposed'`: awaiting driver review. T215/T216 flip to
 accepted/skipped via user-facing endpoints.
@@ -68,6 +69,7 @@ async def generate_prescription_for_episode(
             expected_context={},
             success_condition={},
             status=_INITIAL_STATUS,
+            drill_template_id=rule.prescription.drill_template_id,
         )
     )
     await db.commit()
