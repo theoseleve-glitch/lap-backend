@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
 from infra.orm import CarModel as CarModelRow
+from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import TrackLayout as TrackLayoutRow
@@ -128,6 +129,39 @@ async def create_bridge_link(
 
     link_id = uuid6.uuid7()
     created_at = datetime.now(UTC)
+
+    # T028 (sprint2-backend) — server-generated CoachingInsight
+    # summarizing the transfer findings. Server-controlled (like
+    # id/driver_id/created_at), so any client-supplied
+    # `generated_report_id` on the body is ignored — we overwrite
+    # with the new insight's id below. Insight points at the
+    # primary session (first in pair); the full pair is reachable
+    # via the link's session_pair field.
+    primary_session_id = UUID(str(body.session_pair[0]))
+    insight_id = uuid6.uuid7()
+    db.add(
+        CoachingInsightRow(
+            id=insight_id,
+            session_id=primary_session_id,
+            driver_id=profile.id,
+            created_at=created_at,
+            rule_id="bridge.link_created",
+            rule_version="v1",
+            observation=_summarize_transfer(body),
+            evidence=[str(s) for s in body.session_pair],
+            likely_cause=None,
+            severity=_severity_from_scores(
+                body.shape_match_score, body.intensity_match_score
+            ),
+            confidence=(
+                body.shape_match_score + body.intensity_match_score
+            )
+            / 2.0,
+            corner_tag=None,
+            suggested_prescription_id=None,
+        )
+    )
+
     row = TransferLinkRow(
         id=link_id,
         driver_id=profile.id,
@@ -142,7 +176,7 @@ async def create_bridge_link(
         ],
         transferred_skills=list(body.transferred_skills),
         non_transferred_skills=list(body.non_transferred_skills),
-        generated_report_id=body.generated_report_id,
+        generated_report_id=insight_id,
     )
     db.add(row)
     await db.commit()
@@ -159,7 +193,7 @@ async def create_bridge_link(
         divergence_points=body.divergence_points,
         transferred_skills=body.transferred_skills,
         non_transferred_skills=body.non_transferred_skills,
-        generated_report_id=body.generated_report_id,
+        generated_report_id=insight_id,
     )
 
 
@@ -279,6 +313,30 @@ async def rate_bridge_link(
     await db.commit()
     await db.refresh(row)
     return _row_to_schema(row)
+
+
+def _summarize_transfer(body: TransferLinkCreate) -> str:
+    """T028 — observation text on the auto-generated insight.
+    Deliberately templated and short; the link itself is the
+    rich artifact, the insight is the timeline-visible summary."""
+    return (
+        f"Sim-real bridge: shape match {body.shape_match_score:.2f}, "
+        f"intensity match {body.intensity_match_score:.2f}, "
+        f"{len(body.divergence_points)} divergence points across "
+        f"{len(body.session_pair)} sessions."
+    )
+
+
+def _severity_from_scores(shape: float, intensity: float) -> str:
+    """T028 — inverse mapping: low sim↔real match means a wider
+    gap to coach about, so it gets ranked higher in the
+    coaching-priority view."""
+    avg = (shape + intensity) / 2.0
+    if avg < 0.5:
+        return "high"
+    if avg < 0.75:
+        return "medium"
+    return "low"
 
 
 async def _validate_pair_bridgeable(
