@@ -69,6 +69,9 @@ async def list_tracks(
 @router.get(
     "/tracks/{master_track_id}",
     response_model=TrackCatalogPublic,
+    # T015 — declare the 404 explicitly so the OpenAPI spec matches
+    # the runtime behavior (zero-drift contract test pin).
+    responses={404: {"description": "track_not_found"}},
 )
 async def get_track(master_track_id: str) -> TrackCatalogPublic:
     entry = get_track_catalog().get(master_track_id)
@@ -114,6 +117,9 @@ async def list_cars(
 @router.get(
     "/cars/{master_car_id}",
     response_model=CarCatalogPublic,
+    # T015 — declare the 404 explicitly so the OpenAPI spec matches
+    # the runtime behavior (zero-drift contract test pin).
+    responses={404: {"description": "car_not_found"}},
 )
 async def get_car(master_car_id: str) -> CarCatalogPublic:
     entry = get_car_catalog().get(master_car_id)
