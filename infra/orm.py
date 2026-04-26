@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -324,6 +325,23 @@ class TransferLink(Base):
     )
     rated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # T025 (sprint2-backend) — GIN index over the JSONB
+    # divergence_points array. jsonb_path_ops is half the size of
+    # the default jsonb_ops and is the right operator class for
+    # our containment query pattern (e.g.
+    # `divergence_points @> '[{"track_distance_m": 312.5}]'`).
+    # SQLite ignores the postgresql_* kwargs; the migration
+    # guards on dialect so the actual CREATE INDEX runs only on
+    # Postgres.
+    __table_args__ = (
+        Index(
+            "ix_transfer_links_divergence_points_gin",
+            "divergence_points",
+            postgresql_using="gin",
+            postgresql_ops={"divergence_points": "jsonb_path_ops"},
+        ),
     )
 
 
