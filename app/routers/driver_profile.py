@@ -25,12 +25,14 @@ correct only by accident.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from lap_schemas.v1 import DriverProfileAggregate
+from fastapi import APIRouter, Depends, HTTPException, status
+from lap_schemas.v1 import DriverProfile as DriverProfileSchema
+from lap_schemas.v1 import DriverProfileAggregate, DriverProfileUpdate
 from lap_schemas.v1.action_prescription import ActionPrescriptionListItem
+from lap_schemas.v1.driver_profile import SkillLevel
 from lap_schemas.v1.driver_progress_snapshot import DriverProgressSnapshot
 from lap_schemas.v1.driver_readiness_state import DriverReadinessState
 from lap_schemas.v1.weakness_episode import WeaknessEpisode
@@ -51,6 +53,51 @@ _TOP_WEAKNESSES = 5
 _OPEN_RX_STATUSES = ("proposed", "accepted", "in_progress")
 # severity rank: higher number = more severe → sort key reverse=True
 _SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2}
+
+
+# T053 (sprint2-backend) — PATCH /api/v1/driver/profile.
+# Update-only endpoint for the authenticated driver's profile;
+# the focus is the cohort_opt_in toggle (sprint requirement) but
+# the body accepts the full DriverProfileUpdate so the UI can
+# patch any subset of fields without choosing between endpoints.
+# Bootstrap-create remains on PATCH /me — this endpoint 404s on
+# missing profile.
+@router.patch(
+    "/profile",
+    response_model=DriverProfileSchema,
+    responses={404: {"description": "driver_not_found"}},
+)
+async def patch_driver_profile(
+    update: DriverProfileUpdate,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DriverProfileSchema:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+    if update.display_name is not None:
+        profile.display_name = update.display_name
+    if update.skill_level is not None:
+        profile.skill_level = update.skill_level
+    if update.cohort_opt_in is not None:
+        profile.cohort_opt_in = update.cohort_opt_in
+    await db.commit()
+    return DriverProfileSchema(
+        id=profile.id,
+        user_id=profile.user_id,
+        display_name=profile.display_name,
+        skill_level=cast(SkillLevel, profile.skill_level),
+        cohort_opt_in=profile.cohort_opt_in,
+    )
 
 
 @router.get("/profile", response_model=DriverProfileAggregate)
