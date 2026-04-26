@@ -694,3 +694,50 @@ class StintRecord(Base):
     tire_age_laps: Mapped[int] = mapped_column(Integer)
     fuel_used_liters: Mapped[float] = mapped_column(Float)
     lap_time_decay_seconds: Mapped[float] = mapped_column(Float)
+
+
+class TargetEvent(Base):
+    """T081 — driver-pinned upcoming sim event or real-life session.
+
+    Field shapes follow ADR §5.7 verbatim. driver_id is added beyond
+    the §5.7 BaseModel shape because each pinned target belongs to
+    one driver — this is the persistence layer where the relationship
+    lives. CASCADE on driver delete: GDPR right-to-erasure drops the
+    pinned targets when the driver row is purged.
+
+    track_id and car_id are nullable because real-life events may
+    reference a track/car not yet in our catalog at pin time. ends_at
+    is nullable for point-in-time events (single qualifier session).
+    notes is nullable free-form context.
+
+    competitive_weight is a 0-1 float; bound enforcement happens in
+    the Pydantic request schema landing in T082 (DB-level CHECK would
+    reject the request before it reaches the validator that produces
+    a useful 422 error message).
+
+    No indexes yet: read patterns materialize in T084 (per-driver
+    list) and T089 (readiness recomputation lookups). Speculative
+    indexes now would commit to a query shape the consumers haven't
+    defined.
+    """
+
+    __tablename__ = "target_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("driver_profiles.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(32))
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    track_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("track_layouts.id", ondelete="SET NULL"), nullable=True
+    )
+    car_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("car_models.id", ondelete="SET NULL"), nullable=True
+    )
+    competitive_weight: Mapped[float] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
