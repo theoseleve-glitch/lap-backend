@@ -644,3 +644,40 @@ class EnduranceEvent(Base):
     driver_ids: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB(), "postgresql")
     )
+
+
+class StintRecord(Base):
+    """T069 — per-stint persistence for endurance sessions.
+
+    One row per stint of a session. T068 detects the stint boundaries
+    (start_lap/end_lap/lap_count); T070+ derive the per-stint metrics
+    (consistency, pace decay, tire preservation) that get stored here.
+    T069 owns *storage* only, not derivation.
+
+    Cascade delete from sessions: when a session is purged (GDPR
+    right-to-erasure), its stints go too. The endurance event itself
+    survives (it can outlive any single contributor).
+
+    Unique on (session_id, stint_index): a re-fire of the stint-
+    detection job must not silently double-write rows and skew the
+    EnduranceEvent rollup.
+    """
+
+    __tablename__ = "stint_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "stint_index", name="uq_stint_records_session_index"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), index=True
+    )
+    stint_index: Mapped[int] = mapped_column(Integer)
+    start_lap: Mapped[int] = mapped_column(Integer)
+    end_lap: Mapped[int] = mapped_column(Integer)
+    lap_count: Mapped[int] = mapped_column(Integer)
+    tire_age_laps: Mapped[int] = mapped_column(Integer)
+    fuel_used_liters: Mapped[float] = mapped_column(Float)
+    lap_time_decay_seconds: Mapped[float] = mapped_column(Float)
