@@ -24,8 +24,8 @@ from uuid import UUID
 
 import uuid6
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from lap_schemas.v1 import BridgeLinkRatingRequest, TransferLinkCreate, TransferLinkList
 from lap_schemas.v1 import TransferLink as TransferLinkSchema
-from lap_schemas.v1 import TransferLinkCreate, TransferLinkList
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -199,6 +199,49 @@ async def delete_bridge_link(
     await db.commit()
 
 
+# T023 (sprint2-backend) — driver thumbs-up/down on a bridge link's
+# usefulness. Server stamps `rated_at` (clients can't backdate, so
+# the rule-health audit can trust freshness). Re-rating overwrites
+# in place — there's only one rating per link. 404-not-403 on
+# absent or not-owned, same posture as get/delete on this router.
+@router.post(
+    "/links/{link_id}/rate",
+    response_model=TransferLinkSchema,
+    responses={404: {"description": "transfer_link_not_found"}},
+)
+async def rate_bridge_link(
+    link_id: UUID,
+    body: BridgeLinkRatingRequest,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TransferLinkSchema:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    row = (
+        await db.execute(
+            select(TransferLinkRow).where(
+                TransferLinkRow.id == link_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or profile is None or row.driver_id != profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="transfer_link_not_found",
+        )
+
+    row.usefulness_rating = body.rating
+    row.rated_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(row)
+    return _row_to_schema(row)
+
+
 def _row_to_schema(row: TransferLinkRow) -> TransferLinkSchema:
     return TransferLinkSchema(
         id=row.id,
@@ -213,6 +256,8 @@ def _row_to_schema(row: TransferLinkRow) -> TransferLinkSchema:
         transferred_skills=tuple(row.transferred_skills or []),
         non_transferred_skills=tuple(row.non_transferred_skills or []),
         generated_report_id=row.generated_report_id,
+        usefulness_rating=row.usefulness_rating,  # T023
+        rated_at=row.rated_at,  # T023
     )
 
 

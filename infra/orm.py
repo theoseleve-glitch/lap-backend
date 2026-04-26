@@ -316,6 +316,15 @@ class TransferLink(Base):
         ForeignKey("coaching_insights.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # T023 (sprint2-backend) — driver feedback. Nullable until
+    # POST /api/v1/bridge/links/:id/rate is called. Re-rating
+    # overwrites in place; only one rating per link.
+    usefulness_rating: Mapped[str | None] = mapped_column(
+        String(8), nullable=True
+    )
+    rated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class DriverBenchmarkProfile(Base):
