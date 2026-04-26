@@ -17,7 +17,7 @@ from uuid import UUID
 
 import uuid6
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from lap_schemas.v1 import TargetEvent, TargetEventCreate
+from lap_schemas.v1 import TargetEvent, TargetEventCreate, TargetEventList
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -135,3 +135,36 @@ async def delete_target_event(
         )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@driver_router.get(
+    "/target-events",
+    response_model=TargetEventList,
+    responses={404: {"description": "driver_not_found"}},
+)
+async def list_target_events(
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TargetEventList:
+    profile = (
+        await db.execute(
+            select(DriverProfile).where(DriverProfile.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+    # Sort by starts_at ASC at the DB layer — soonest-first matches
+    # the UI contract (clients display list[0] as "your next event").
+    rows = (
+        await db.execute(
+            select(TargetEventRow)
+            .where(TargetEventRow.driver_id == profile.id)
+            .order_by(TargetEventRow.starts_at.asc())
+        )
+    ).scalars().all()
+    return TargetEventList(
+        target_events=tuple(_to_response(row) for row in rows),
+    )
