@@ -1,0 +1,60 @@
+# Synthetic endurance stint fixture — Spa 24 Hours, hour 2, an
+# amateur driver showing thermal-degradation symptoms. Used by T077
+# integration test for the endurance rule library (T074).
+#
+# Profile: a 35-lap stint where the driver pushed too hard early
+# and the tires picked up temperature. Symptoms:
+# - Severe pace decay (0.8 s/lap slope across the stint) — the
+#   spec's reference example "pace decay in hour 2 is 0.8s/lap —
+#   coolant management issue".
+# - Tire preservation score crashes to 0.3 — thermal abuse from
+#   the high decay combined with elevated fuel burn.
+# - Fuel above target (4.2 L/lap) — the throttle aggression that
+#   drove the decay also burned excess fuel.
+#
+# Symptoms NOT present:
+# - Closing-stint consistency is fine (driver is reliably slow,
+#   not erratic) — drops the late-stint focus rule.
+# - Stint length 35 laps is normal — drops the short-stint
+#   warning.
+#
+# Designed firing set (3 rules):
+#   - enduro.stint_management.pace_decay_excessive
+#   - enduro.tire.preservation_low
+#   - enduro.fuel.burn_above_target
+# Designed non-fires (2 rules):
+#   - enduro.stint_management.closing_stint_consistency_drop
+#   - enduro.stint_management.short_stint_unplanned
+
+# T071 pace-decay slope — fires (0.8 > 0.15)
+stint_pace_decay_seconds_per_lap: 0.8
+
+# T072 tire preservation composite — fires (0.30 < 0.40)
+stint_tire_preservation_score: 0.30
+
+# T070 closing-window stddev — does NOT fire (0.20 < 0.45;
+# driver is consistently slow, not erratic)
+stint_closing_window_consistency_seconds: 0.20
+
+# Per-lap fuel burn — fires (4.2 > 4.0)
+stint_fuel_used_per_lap_liters: 4.2
+
+# Stint length — does NOT fire (35 > 8; full normal stint)
+stint_lap_count: 35
+
+# Template variables the firing rules' beginner explanations need.
+# Padded with vars from intermediate/advanced templates so a
+# future difficulty bump doesn't break this fixture.
+stint_index: 2
+decay_per_lap_ms: 800
+decay_per_lap_seconds: 0.8
+preservation_score: 0.30
+fuel_per_lap: 4.2
+fuel_subscore: 0.067
+decay_subscore: 0.0
+projected_stint_fuel: 147.0
+target_stint_fuel: 140.0
+closing_stddev_seconds: 0.20
+window_size: 10
+target_stint_lap_count: 35
+pit_in_lap: 35
