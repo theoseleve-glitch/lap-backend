@@ -12,6 +12,7 @@ from app.logging import configure_logging, logger
 from app.rate_limit import rate_limit_middleware
 from app.routers import admin as admin_router
 from app.routers import billing as billing_router
+from app.routers import bridge as bridge_router
 from app.routers import catalog as catalog_router
 from app.routers import coaching as coaching_router
 from app.routers import compare_cases as compare_cases_router
@@ -89,6 +90,7 @@ async def attach_request_id(
 
 app.include_router(admin_router.router)
 app.include_router(billing_router.router)
+app.include_router(bridge_router.router)
 app.include_router(catalog_router.router)
 app.include_router(coaching_router.router)
 app.include_router(compare_cases_router.router)
