@@ -619,3 +619,28 @@ class CohortMetric(Base):
     metric: Mapped[str] = mapped_column(String(64))
     value: Mapped[float] = mapped_column(Float)
     session_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EnduranceEvent(Base):
+    """T067 — endurance race weekend aggregate.
+
+    Many sessions belong to one event via SessionManifest.endurance_event_id
+    (T066). Stores the planned-run shape (duration, stint count) and the
+    denormalized roster of participating drivers.
+
+    driver_ids stored as JSON list[UUID] (string form for portability):
+    the participant list is small (1-6 drivers/entry) and read-mostly.
+    A join table would add a second migration + an extra query for every
+    read; the read-side simplicity wins at this point in the sprint.
+    T068+ keeps the list synced as sessions arrive.
+    """
+
+    __tablename__ = "endurance_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    event_name: Mapped[str] = mapped_column(String(255))
+    total_duration_seconds: Mapped[float] = mapped_column(Float)
+    stint_count: Mapped[int] = mapped_column(Integer)
+    driver_ids: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql")
+    )
