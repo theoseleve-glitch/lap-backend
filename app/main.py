@@ -30,9 +30,13 @@ configure_sentry(os.getenv("SENTRY_DSN", ""))
 REQUEST_ID_HEADER = "x-request-id"
 
 # T226 — relocate OpenAPI spec under /api/v1/ so the schema
-# lives next to the routes it describes. T227/T228 (Swagger UI,
-# ReDoc) read from this URL.
-app = FastAPI(openapi_url="/api/v1/openapi.json")
+# lives next to the routes it describes.
+# T227 — Swagger UI mounted next to the spec so dev tooling
+# uses one versioned base URL.
+app = FastAPI(
+    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs",
+)
 
 app.add_middleware(
     CORSMiddleware,
