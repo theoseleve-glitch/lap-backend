@@ -21,6 +21,7 @@ from app.routers import outcomes as outcomes_router
 from app.routers import pairing as pairing_router
 from app.routers import prescriptions as prescriptions_router
 from app.routers import sessions as sessions_router
+from app.routers import timeline as timeline_router
 from app.routers import webhooks as webhooks_router
 from infra.sentry import configure_sentry
 
@@ -93,6 +94,7 @@ app.include_router(pairing_router.router)
 app.include_router(prescriptions_router.router)
 app.include_router(prescriptions_router.driver_router)
 app.include_router(sessions_router.router)
+app.include_router(timeline_router.router)
 app.include_router(webhooks_router.router)
 
 
