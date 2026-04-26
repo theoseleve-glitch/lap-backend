@@ -25,12 +25,16 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from lap_schemas.v1 import DriverBenchmarkResponse
+from lap_schemas.v1 import CohortSizeResponse, DriverBenchmarkResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
-from domain.cohort_minimum import is_cohort_eligible_for_percentile
+from domain.cohort_minimum import (
+    MIN_COHORT_SIZE,
+    count_cohort_members,
+    is_cohort_eligible_for_percentile,
+)
 from domain.percentile_compute import cohort_percentile_for_value
 from infra.orm import DriverProfile, DriverProgressSnapshot
 from infra.orm import User as UserRow
@@ -102,4 +106,26 @@ async def get_driver_benchmark(
 
     return DriverBenchmarkResponse(
         car_id=car_id, track_id=track_id, percentiles=percentiles,
+    )
+
+
+# T059 — companion to /benchmark for the "X / 20 drivers" UI
+# message when /benchmark returns null percentiles. Reports the
+# raw count regardless of unlock state so the client can render
+# progress; the unlock_threshold field is server-controlled so
+# the UI doesn't need to hardcode k=20.
+@router.get(
+    "/cohort_size",
+    response_model=CohortSizeResponse,
+)
+async def get_cohort_size(
+    car_id: Annotated[UUID, Query()],
+    track_id: Annotated[UUID, Query()],
+    _user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CohortSizeResponse:
+    n = await count_cohort_members(db, car_id=car_id, track_id=track_id)
+    return CohortSizeResponse(
+        car_id=car_id, track_id=track_id,
+        cohort_size=n, unlock_threshold=MIN_COHORT_SIZE,
     )
