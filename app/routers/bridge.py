@@ -103,6 +103,29 @@ async def create_bridge_link(
     # catalog state across drivers.
     await _validate_pair_bridgeable(db, sessions)
 
+    # T027 (sprint2-backend) — dedup. Same set of session ids
+    # can't be linked twice for the same driver. Order-independent
+    # (the pair is conceptually a set). Driver-scoped (driver B
+    # can link the same pair driver A linked).
+    new_pair_set = {str(s) for s in body.session_pair}
+    existing_for_driver = (
+        (
+            await db.execute(
+                select(TransferLinkRow).where(
+                    TransferLinkRow.driver_id == profile.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for link in existing_for_driver:
+        if {str(s) for s in link.session_pair} == new_pair_set:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="duplicate_link",
+            )
+
     link_id = uuid6.uuid7()
     created_at = datetime.now(UTC)
     row = TransferLinkRow(
