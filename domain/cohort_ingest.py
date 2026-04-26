@@ -56,6 +56,10 @@ _DIMENSIONS: tuple[str, ...] = (
     "strategy_execution",
     "setup_sensitivity",
     "adaptation",
+    # T078 — long-run benchmark. pace_decay is nullable on the
+    # snapshot (T073), so sprint-only drivers contribute no row
+    # via the existing isinstance(dim, dict) guard below.
+    "pace_decay",
 )
 
 
