@@ -1,11 +1,14 @@
-"""T211 — Prescription generator (skeleton). T212 — drill linkage.
+"""T211 — Prescription generator. T212 — drill linkage.
+T213 — success_condition population.
 
 Writes one ActionPrescription row linked to the WeaknessEpisode
 that triggered it. T211 nails the basic creation path; T212
 copies `rule.prescription.drill_template_id` through so the UI
-can deep-link to the drill page. T213 fills success_condition
-from the rule template, T214 adds dedup so the same open
-episode doesn't spawn duplicate prescriptions.
+can deep-link to the drill page; T213 dumps the rule's
+SuccessCondition (metric/comparison/target_pct/measurement_window)
+into the success_condition JSON column so the outcome tracker
+has a machine-checkable contract. T214 adds dedup so the same
+open episode doesn't spawn duplicate prescriptions.
 
 `status='proposed'`: awaiting driver review. T215/T216 flip to
 accepted/skipped via user-facing endpoints.
@@ -67,7 +70,9 @@ async def generate_prescription_for_episode(
             title=_title(rule),
             rationale=_rationale(rule, episode),
             expected_context={},
-            success_condition={},
+            success_condition=rule.prescription.success_condition.model_dump(
+                mode="json"
+            ),
             status=_INITIAL_STATUS,
             drill_template_id=rule.prescription.drill_template_id,
         )
