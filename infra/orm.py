@@ -327,6 +327,13 @@ class TransferLink(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # T029 (sprint2-backend) — link lifecycle. Set when a session
+    # in `session_pair` is deleted. Once stamped, never overwritten;
+    # the missing session isn't coming back.
+    stale_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # T025 (sprint2-backend) — GIN index over the JSONB
     # divergence_points array. jsonb_path_ops is half the size of
     # the default jsonb_ops and is the right operator class for
