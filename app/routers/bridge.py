@@ -26,7 +26,7 @@ import uuid6
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from lap_schemas.v1 import TransferLink as TransferLinkSchema
 from lap_schemas.v1 import TransferLinkCreate, TransferLinkList
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
@@ -158,6 +158,45 @@ async def get_bridge_link(
             detail="transfer_link_not_found",
         )
     return _row_to_schema(row)
+
+
+# T022 (sprint2-backend) — revoke a bridge link the authenticated
+# driver owns. 204 on success, 404 (not 403) for absent/not-owned.
+# Hard delete: bridge links are user-curated artifacts; if the
+# user wants the analysis back they re-create or re-accept it.
+@router.delete(
+    "/links/{link_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "transfer_link_not_found"}},
+)
+async def delete_bridge_link(
+    link_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    row = (
+        await db.execute(
+            select(TransferLinkRow).where(
+                TransferLinkRow.id == link_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or profile is None or row.driver_id != profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="transfer_link_not_found",
+        )
+    await db.execute(
+        delete(TransferLinkRow).where(TransferLinkRow.id == link_id)
+    )
+    await db.commit()
 
 
 def _row_to_schema(row: TransferLinkRow) -> TransferLinkSchema:
