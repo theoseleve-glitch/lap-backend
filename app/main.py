@@ -91,6 +91,7 @@ async def attach_request_id(
 app.include_router(admin_router.router)
 app.include_router(billing_router.router)
 app.include_router(bridge_router.router)
+app.include_router(bridge_router.driver_router)
 app.include_router(catalog_router.router)
 app.include_router(coaching_router.router)
 app.include_router(compare_cases_router.router)

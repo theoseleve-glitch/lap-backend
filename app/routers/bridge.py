@@ -23,10 +23,10 @@ from typing import Annotated
 from uuid import UUID
 
 import uuid6
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from lap_schemas.v1 import TransferLink as TransferLinkSchema
-from lap_schemas.v1 import TransferLinkCreate
-from sqlalchemy import select
+from lap_schemas.v1 import TransferLinkCreate, TransferLinkList
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
@@ -36,6 +36,14 @@ from infra.orm import TransferLink as TransferLinkRow
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/bridge", tags=["bridge"])
+# T021 — second router so the driver-scoped path
+# /api/v1/driver/:id/bridge/links lives outside the /bridge
+# prefix while still cohabiting this module.
+driver_router = APIRouter(prefix="/api/v1/driver", tags=["bridge"])
+
+# T021 — pagination defaults match catalog endpoints.
+_DEFAULT_LIMIT = 20
+_MAX_LIMIT = 100
 
 
 @router.post(
@@ -166,4 +174,63 @@ def _row_to_schema(row: TransferLinkRow) -> TransferLinkSchema:
         transferred_skills=tuple(row.transferred_skills or []),
         non_transferred_skills=tuple(row.non_transferred_skills or []),
         generated_report_id=row.generated_report_id,
+    )
+
+
+# T021 (sprint2-backend) — paginated driver-scoped index. Sorted
+# newest-first so the "recent links" view doesn't need a client
+# sort. Cross-driver isolation: path's driver_id must match the
+# authenticated user's profile.id, otherwise 404 (not 403) so
+# callers can't enumerate drivers.
+@driver_router.get(
+    "/{driver_id}/bridge/links",
+    response_model=TransferLinkList,
+    responses={404: {"description": "driver_not_found"}},
+)
+async def list_driver_bridge_links(
+    driver_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=_MAX_LIMIT)] = _DEFAULT_LIMIT,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TransferLinkList:
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None or profile.id != driver_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+
+    total = (
+        await db.execute(
+            select(func.count(TransferLinkRow.id)).where(
+                TransferLinkRow.driver_id == driver_id
+            )
+        )
+    ).scalar_one()
+
+    rows = (
+        (
+            await db.execute(
+                select(TransferLinkRow)
+                .where(TransferLinkRow.driver_id == driver_id)
+                .order_by(TransferLinkRow.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return TransferLinkList(
+        items=tuple(_row_to_schema(r) for r in rows),
+        total=int(total),
+        limit=limit,
+        offset=offset,
     )
