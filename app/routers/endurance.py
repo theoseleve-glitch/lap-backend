@@ -20,16 +20,21 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from lap_schemas.v1 import EnduranceEventSummary
+from lap_schemas.v1 import (
+    DriverEnduranceHistoryEntry,
+    DriverEnduranceHistoryList,
+    EnduranceEventSummary,
+)
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
-from infra.orm import EnduranceEvent, StintRecord
+from infra.orm import DriverProfile, EnduranceEvent, StintRecord
 from infra.orm import Session as SessionRow
 from infra.orm import User as UserRow
 
 router = APIRouter(prefix="/api/v1/endurance", tags=["endurance"])
+driver_router = APIRouter(prefix="/api/v1/driver", tags=["endurance"])
 
 
 @router.get(
@@ -106,3 +111,48 @@ async def get_endurance_event_summary(
             float(mean_fuel) if mean_fuel is not None else None
         ),
     )
+
+
+# T076 — driver-scoped endurance event history. Membership comes
+# from EnduranceEvent.driver_ids (the explicit roster on the
+# event), not session-derived — pre-event entries appear before
+# the driver has logged any session.
+@driver_router.get(
+    "/endurance/history",
+    response_model=DriverEnduranceHistoryList,
+    responses={404: {"description": "driver_not_found"}},
+)
+async def get_driver_endurance_history(
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DriverEnduranceHistoryList:
+    profile = (
+        await db.execute(
+            select(DriverProfile).where(DriverProfile.user_id == user.id)
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+
+    # driver_ids is a JSON list[str]; SQL JSON-contains differs
+    # across SQLite/Postgres, so filter Python-side. The events
+    # table is small (race weekends per organization), so the
+    # full scan is acceptable.
+    target = str(profile.id)
+    rows = (
+        await db.execute(select(EnduranceEvent))
+    ).scalars().all()
+    matched = [
+        DriverEnduranceHistoryEntry(
+            id=row.id,
+            event_name=row.event_name,
+            total_duration_seconds=row.total_duration_seconds,
+            stint_count=row.stint_count,
+        )
+        for row in rows
+        if target in (row.driver_ids or [])
+    ]
+    return DriverEnduranceHistoryList(events=tuple(matched))
