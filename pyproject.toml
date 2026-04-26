@@ -25,6 +25,8 @@ dependencies = [
     "stripe>=11.0",
     "structlog>=24.0",
     "uvicorn>=0.30",
+    "numpy>=2.4.4",
+    "scipy>=1.17.1",
 ]
 
 [tool.uv]
@@ -63,7 +65,7 @@ files = ["app", "domain"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["boto3", "botocore.*", "celery", "celery.*"]
+module = ["boto3", "botocore.*", "celery", "celery.*", "scipy", "scipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
