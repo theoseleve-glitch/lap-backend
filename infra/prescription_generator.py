@@ -1,5 +1,5 @@
 """T211 — Prescription generator. T212 — drill linkage.
-T213 — success_condition population.
+T213 — success_condition population. T214 — dedup against episode.
 
 Writes one ActionPrescription row linked to the WeaknessEpisode
 that triggered it. T211 nails the basic creation path; T212
@@ -7,8 +7,9 @@ copies `rule.prescription.drill_template_id` through so the UI
 can deep-link to the drill page; T213 dumps the rule's
 SuccessCondition (metric/comparison/target_pct/measurement_window)
 into the success_condition JSON column so the outcome tracker
-has a machine-checkable contract. T214 adds dedup so the same
-open episode doesn't spawn duplicate prescriptions.
+has a machine-checkable contract; T214 makes the call idempotent
+so a Celery retry doesn't spawn a second row — if a prescription
+already exists for this episode, return its id and skip the insert.
 
 `status='proposed'`: awaiting driver review. T215/T216 flip to
 accepted/skipped via user-facing endpoints.
@@ -22,6 +23,7 @@ from datetime import datetime
 from uuid import UUID
 
 import uuid6
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coaching.library.rule_schema import RuleSpec
@@ -58,7 +60,18 @@ async def generate_prescription_for_episode(
     rule: RuleSpec,
     now: datetime,
 ) -> UUID:
-    """Create one ActionPrescription for `episode`, return its id."""
+    """Create one ActionPrescription for `episode`, return its id.
+    Idempotent: if a prescription already exists for this episode,
+    return the existing id without inserting a second row."""
+    existing_id = (
+        await db.execute(
+            select(ActionPrescription.id).where(
+                ActionPrescription.weakness_episode_id == episode.id
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_id is not None:
+        return existing_id
     new_id = uuid6.uuid7()
     db.add(
         ActionPrescription(
