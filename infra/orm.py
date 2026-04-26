@@ -741,3 +741,49 @@ class TargetEvent(Base):
     )
     competitive_weight: Mapped[float] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class IRacingCalendarEntry(Base):
+    """T085 — one row per scraped iRacing calendar entry.
+
+    Populated weekly by infra.iracing_calendar.fetch_and_store
+    (T087 cron). Covers both rotating series weeks and one-off
+    special events; the `kind` column distinguishes them so T086's
+    parser and downstream consumers can branch.
+
+    `source_id` carries iRacing's own identifier (a stable string
+    across re-fetches) and is unique-indexed so the scraper's upsert
+    can match existing rows without scanning the whole table.
+
+    track_name and car_class are stored as free text from iRacing;
+    T086 will resolve track_name to TrackLayout via the catalog
+    bridge. Storing the raw string here means a new track that
+    isn't yet in our catalog still gets recorded — we don't drop
+    rows just because the catalog hasn't caught up.
+
+    fetched_at is server-stamped on each upsert (NOT taken from
+    the payload) — distinguishes "when iRacing scheduled this" from
+    "when we last saw this in the feed". Stale-data detection uses
+    fetched_at vs the cron schedule.
+    """
+
+    __tablename__ = "iracing_calendar_entries"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    source_id: Mapped[str] = mapped_column(
+        String(128), unique=True, index=True
+    )
+    series_name: Mapped[str] = mapped_column(String(255))
+    event_name: Mapped[str] = mapped_column(String(255))
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    track_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    car_class: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
