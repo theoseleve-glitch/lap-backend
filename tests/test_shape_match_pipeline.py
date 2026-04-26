@@ -1,12 +1,15 @@
-"""T035 (sprint2-backend) — shape match end-to-end validation.
+"""T035 + T036 (sprint2-backend) — shape match end-to-end validation.
 
-Pins the contract that two *identical* sessions, fed through the
-full bridge pipeline (T031 segment → T032 extract → T033 normalize
-→ T034 score), produce a per-corner score of 1.0.
+T035 pins the upper bound: two *identical* sessions, fed through
+the full bridge pipeline (T031 segment → T032 extract → T033
+normalize → T034 score), produce a per-corner score of 1.0.
 
-This is the sim-vs-sim baseline. If a later refactor accidentally
-breaks the round-trip (e.g., normalize introduces float drift, or
-segment loses the last sample), this test catches it.
+T036 pins the discrimination band: a synthetic "real-world"
+perturbation of the sim signal (deterministic seeded noise that
+emulates sensor jitter + driver-input variability) scores in
+(0.6, 0.95) — positive but not perfect correlation. Until an
+archived sim-vs-real telemetry pair is available, the synthetic
+emulation stands in; the discrimination contract is the same.
 
 Why integration rather than just unit:
   test_shape_match.py already covers the score function with
@@ -18,6 +21,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterator
+
+import numpy as np
 
 from domain.channel_extractor import extract_channels
 from domain.channel_normalizer import normalize_channels
@@ -112,3 +117,75 @@ def test_identical_sessions_full_lap_corner_also_one() -> None:
     assert len(scores) == 2  # two laps, one corner
     for score in scores:
         assert math.isclose(score, 1.0, abs_tol=1e-9)
+
+
+# -- T036: sim-vs-real discrimination band ------------------------
+
+
+def _real_world_emulation(
+    sim_samples: list[dict[str, object]], *, seed: int = 42
+) -> list[dict[str, object]]:
+    """Deterministic 'real-world' perturbation of a sim sample
+    stream. Models what differs between sim and real same-track
+    telemetry: per-channel sensor noise + driver-input jitter.
+
+    Magnitudes chosen empirically so the resulting score lands in
+    (0.6, 0.95) — strong correlation, not perfect. When archived
+    sim-vs-real data is available, swap this for the fixture.
+    """
+    rng = np.random.default_rng(seed=seed)
+    out: list[dict[str, object]] = []
+    for s in sim_samples:
+        # Scale noise per-channel to the channel's natural range so
+        # r drops into the target band rather than collapsing.
+        out.append({
+            "lap_number": s["lap_number"],
+            "lap_dist_m": s["lap_dist_m"],
+            "brake": max(
+                0.0, float(s["brake"]) + 0.2 * float(rng.standard_normal())  # type: ignore[arg-type]
+            ),
+            "throttle": max(
+                0.0,
+                float(s["throttle"]) + 0.2 * float(rng.standard_normal()),  # type: ignore[arg-type]
+            ),
+            "steering": float(s["steering"])  # type: ignore[arg-type]
+            + 0.2 * float(rng.standard_normal()),
+            "speed": float(s["speed"])  # type: ignore[arg-type]
+            + 6.0 * float(rng.standard_normal()),
+            "g_lat": float(s["g_lat"])  # type: ignore[arg-type]
+            + 0.3 * float(rng.standard_normal()),
+            "g_lon": float(s["g_lon"])  # type: ignore[arg-type]
+            + 0.25 * float(rng.standard_normal()),
+        })
+    return out
+
+
+def test_sim_vs_real_emulation_scores_in_band() -> None:
+    """T036 acceptance: the synthetic 'real' emulation of a sim
+    session scores in (0.6, 0.95) — positive correlation but not
+    perfect, the band that distinguishes 'same shape, different
+    execution' from both 'identical' and 'unrelated'."""
+    sim = list(_synthetic_lap(1)) + list(_synthetic_lap(2))
+    real = _real_world_emulation(sim)
+    corners = [
+        Corner(name="T1", start_m=0.0, end_m=400.0),
+        Corner(name="T2", start_m=500.0, end_m=900.0),
+    ]
+    scores = _score_pipeline(sim, real, corners)
+    assert len(scores) == 4
+    for score in scores:
+        assert 0.6 < score < 0.95, (
+            f"sim-vs-real should land in (0.6, 0.95), got {score}"
+        )
+
+
+def test_sim_vs_real_emulation_is_deterministic() -> None:
+    """Re-running with the same seed yields the exact same score —
+    pinning that the test isn't flaky."""
+    sim = list(_synthetic_lap(1))
+    real_a = _real_world_emulation(sim)
+    real_b = _real_world_emulation(sim)
+    corners = [Corner(name="full", start_m=0.0, end_m=1000.0)]
+    scores_a = _score_pipeline(sim, real_a, corners)
+    scores_b = _score_pipeline(sim, real_b, corners)
+    assert scores_a == scores_b
