@@ -30,8 +30,10 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from infra.orm import CarModel as CarModelRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
+from infra.orm import TrackLayout as TrackLayoutRow
 from infra.orm import TransferLink as TransferLinkRow
 from infra.orm import User as UserRow
 
@@ -69,23 +71,37 @@ async def create_bridge_link(
             detail="driver_not_found",
         )
 
-    # All sessions in the pair must belong to this driver. Single
-    # IN-clause query: if the count of rows returned is less than
-    # the unique count we asked for, at least one is missing or
-    # owned by someone else — collapse both cases to 404.
+    # All sessions in the pair must belong to this driver. We
+    # fetch the Session rows (not just ids) because T026 needs
+    # their manifests for cross-sim track/car validation. If the
+    # count of rows is less than the unique count we asked for,
+    # at least one is missing or owned by someone else — collapse
+    # both cases to 404.
     session_ids = [UUID(str(s)) for s in body.session_pair]
-    owned_count = (
-        await db.execute(
-            select(SessionRow.id)
-            .where(SessionRow.id.in_(session_ids))
-            .where(SessionRow.driver_id == profile.id)
+    sessions = (
+        (
+            await db.execute(
+                select(SessionRow)
+                .where(SessionRow.id.in_(session_ids))
+                .where(SessionRow.driver_id == profile.id)
+            )
         )
-    ).all()
-    if len(owned_count) != len(set(session_ids)):
+        .scalars()
+        .all()
+    )
+    if len(sessions) != len(set(session_ids)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="session_not_found",
         )
+
+    # T026 (sprint2-backend) — bridge validation. Both sessions
+    # must point at the same master_track_id and have the same
+    # car_class (the catalog-resolved cross-sim grouping fields,
+    # not the per-sim track_id/car_id stored on the manifest).
+    # Run *after* the cross-driver check so callers can't probe
+    # catalog state across drivers.
+    await _validate_pair_bridgeable(db, sessions)
 
     link_id = uuid6.uuid7()
     created_at = datetime.now(UTC)
@@ -240,6 +256,80 @@ async def rate_bridge_link(
     await db.commit()
     await db.refresh(row)
     return _row_to_schema(row)
+
+
+async def _validate_pair_bridgeable(
+    db: AsyncSession, sessions: list[SessionRow]
+) -> None:
+    """T026: enforce that the session pair shares a master_track_id
+    and a car_class. Raises 422 with a stable detail string on
+    violation.
+
+    Both sessions must have `track_id` and `car_id` in their
+    manifest, and both must resolve to existing catalog rows. Any
+    of those preconditions failing collapses to a single
+    `session_unbridgeable` detail — we don't enumerate which side
+    or which field, because the caller already knows their own
+    sessions and the per-field reason isn't actionable from the
+    API surface.
+    """
+    track_ids: list[UUID] = []
+    car_ids: list[UUID] = []
+    for s in sessions:
+        manifest = s.manifest or {}
+        raw_track = manifest.get("track_id")
+        raw_car = manifest.get("car_id")
+        if not raw_track or not raw_car:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="session_unbridgeable",
+            )
+        track_ids.append(UUID(str(raw_track)))
+        car_ids.append(UUID(str(raw_car)))
+
+    track_rows = (
+        (
+            await db.execute(
+                select(TrackLayoutRow).where(
+                    TrackLayoutRow.id.in_(track_ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(track_rows) != len(set(track_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="session_unbridgeable",
+        )
+    masters = {r.master_track_id for r in track_rows}
+    if len(masters) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="incompatible_track",
+        )
+
+    car_rows = (
+        (
+            await db.execute(
+                select(CarModelRow).where(CarModelRow.id.in_(car_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(car_rows) != len(set(car_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="session_unbridgeable",
+        )
+    classes = {r.car_class for r in car_rows}
+    if len(classes) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="incompatible_car_class",
+        )
 
 
 def _row_to_schema(row: TransferLinkRow) -> TransferLinkSchema:

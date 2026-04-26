@@ -36,7 +36,9 @@ from app.main import app
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
 from infra.orm import (
+    CarModel,
     DriverProfile,
+    TrackLayout,
     TransferLink,
     User,
 )
@@ -119,9 +121,20 @@ def _bearer(keys: dict[str, Any], clerk_user_id: str) -> str:
 async def _seed_driver_with_sessions(
     factory: Any, *, clerk_user_id: str, n_sessions: int = 2
 ) -> dict[str, Any]:
+    """Seed driver + N sessions all on the same master_track_id and
+    same car_class so the T026 bridge validation accepts them.
+
+    Each session points at a distinct sim-specific track_id /
+    car_id (real life: iRacing-Spa vs ACC-Spa), but the catalog
+    rows resolve them to a shared master_track_id and shared
+    car_class — i.e., the canonical "bridgeable" pair.
+    """
     user_id = uuid6.uuid7()
     driver_id = uuid6.uuid7()
     session_ids = [uuid6.uuid7() for _ in range(n_sessions)]
+    track_ids = [uuid6.uuid7() for _ in range(n_sessions)]
+    car_ids = [uuid6.uuid7() for _ in range(n_sessions)]
+    master_track = uuid6.uuid7()
     async with factory() as db:
         db.add(
             User(
@@ -133,12 +146,39 @@ async def _seed_driver_with_sessions(
         db.add(
             DriverProfile(id=driver_id, user_id=user_id, display_name="A")
         )
-        for sid in session_ids:
+        for i, tid in enumerate(track_ids):
+            db.add(
+                TrackLayout(
+                    id=tid,
+                    source_provider=f"prov-t-{clerk_user_id}-{i}",
+                    name=f"track-{clerk_user_id}-{i}",
+                    layout_name="gp",
+                    start_finish_lat=0.0,
+                    start_finish_lon=0.0,
+                    start_finish_heading_deg=0.0,
+                    sector_checkpoints=[],
+                    corner_names=[],
+                    master_track_id=master_track,
+                )
+            )
+        for i, cid in enumerate(car_ids):
+            db.add(
+                CarModel(
+                    id=cid,
+                    source_provider=f"prov-c-{clerk_user_id}-{i}",
+                    name=f"car-{clerk_user_id}-{i}",
+                    car_class="gt3",
+                    master_car_id=uuid6.uuid7(),
+                )
+            )
+        for sid, tid, cid in zip(
+            session_ids, track_ids, car_ids, strict=True
+        ):
             db.add(
                 SessionRow(
                     id=sid,
                     driver_id=driver_id,
-                    manifest={},
+                    manifest={"track_id": str(tid), "car_id": str(cid)},
                     created_at=datetime(2026, 4, 25, tzinfo=UTC),
                     status="ready",
                 )
