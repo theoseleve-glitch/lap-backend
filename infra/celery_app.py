@@ -55,6 +55,13 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.daily_session_loss_audit",
         "schedule": crontab(hour=8, minute=0),
     },
+    # T209 — nightly 03:00 UTC WeaknessEpisode confidence decay.
+    # Idempotent — formula derives confidence from time since
+    # last_observed_at, so a missed run is harmless.
+    "nightly-weakness-episode-decay": {
+        "task": "infra.celery_app.nightly_weakness_episode_decay",
+        "schedule": crontab(hour=3, minute=0),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -329,3 +336,35 @@ def daily_session_loss_audit() -> str:
     """Beat-triggered daily 08:00 UTC. Audits stuck sessions."""
     asyncio.run(_run_session_loss_audit())
     return "ok"
+
+
+async def _run_episode_decay() -> int:
+    """T209 cron body: recompute confidence on every open
+    WeaknessEpisode. Returns the count of rows whose stored
+    confidence actually moved (logged for visibility on quiet
+    days vs busy ones)."""
+    from datetime import UTC, datetime
+
+    from infra.episode_decay import decay_open_episodes
+
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            return await decay_open_episodes(
+                db, now=datetime.now(UTC)
+            )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.nightly_weakness_episode_decay")  # type: ignore[untyped-decorator]
+def nightly_weakness_episode_decay() -> str:
+    """Beat-triggered nightly 03:00 UTC. Decays WeaknessEpisode
+    confidence based on days since last_observed_at."""
+    updated = asyncio.run(_run_episode_decay())
+    logger.info(
+        "weakness_episode_decay.run", updated_episodes=updated
+    )
+    return f"updated={updated}"
