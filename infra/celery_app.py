@@ -70,6 +70,14 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.nightly_prescription_expiry",
         "schedule": crontab(hour=3, minute=30),
     },
+    # T235 — daily 02:00 UTC pg_dump → R2 backup. Runs before
+    # the 03:00 / 03:30 sweeps so the snapshot captures quiet
+    # state, not mid-sweep state. Dated keys mean each daily run
+    # is independent; R2 lifecycle rules handle retention.
+    "daily-pg-backup": {
+        "task": "infra.celery_app.daily_pg_backup",
+        "schedule": crontab(hour=2, minute=0),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -407,3 +415,29 @@ def nightly_prescription_expiry() -> str:
         "prescription_expiry.run", updated_prescriptions=updated
     )
     return f"updated={updated}"
+
+
+@celery_app.task(name="infra.celery_app.daily_pg_backup")  # type: ignore[untyped-decorator]
+def daily_pg_backup() -> str:
+    """Beat-triggered daily 02:00 UTC. Runs pg_dump and uploads
+    the result to R2 under a dated key. Returns the key so it
+    appears in the worker log line for ops to locate."""
+    from datetime import UTC, datetime
+
+    from infra.db_backup import dump_database_to_r2
+    from infra.storage import R2BlobStore
+
+    store = R2BlobStore(
+        bucket=os.environ["R2_BACKUP_BUCKET"],
+        endpoint_url=os.environ.get("R2_ENDPOINT_URL"),
+        access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+    )
+    key = dump_database_to_r2(
+        database_url=os.environ["DATABASE_URL"],
+        key_prefix=os.environ.get("R2_BACKUP_PREFIX", "pg-backups"),
+        store=store,
+        now=datetime.now(UTC),
+    )
+    logger.info("pg_backup.completed", key=key)
+    return key
