@@ -1,0 +1,37 @@
+id: "tm.lockup_pattern.flat_spot_risk"
+version: 1
+category: strategy
+subcategory: lockup_pattern
+difficulty: intermediate
+
+detection:
+  signal: lockup_avg_severity_index
+  condition: "lockup_event_count >= 3 and lockup_avg_severity_index >= 0.50"
+  context:
+    must_have_channels: ["brake", "wheel_speed", "lap_position"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.50 = low, 0.65 = medium, 0.80 = high"
+
+explanation_template:
+  beginner: "You had {{lockup_event_count}} lockups this session, and they averaged {{lockup_avg_severity_index}} on the severity scale (0 = brush, 1 = full lock-and-skid). Severe lockups don't just cost the corner — they scrub a flat patch on the tire that turns into vibration, uneven wear, and eventually a stop you didn't plan. T192 already tells you to fix the braking; this rule tells you the tire damage is now real, not theoretical. Inspect tires; expect setup compensation may be needed for the rest of the session."
+  intermediate: "Lockup pattern: n={{lockup_event_count}}, avg severity {{lockup_avg_severity_index}}. T144 = tire-consequence framing of T192's `br.lockup.pattern_detection`. T192's prescription (improve modulation) is the corrective action; T144's prescription (post-incident inspection / setup compensation) is a damage-mitigation action — the tire damage already exists once T144 fires. Order matters: T192 first (stop creating new flat spots), then T144 (manage the ones you already made)."
+  advanced: "Severe-lockup pattern: count {{lockup_event_count}}, severity {{lockup_avg_severity_index}}. Per-event flat-spot risk scales with severity^2 * speed_at_lock; aggregate risk across the session correlates with vibration-induced suspension fatigue downstream of the rule's window. Operationally: when both T192 and T144 fire, route T192 to the driver (modulation drill) and T144 to the engineer (post-session tire/setup inspection, possibly a compensation in caster/toe to mitigate flat-spot vibration in the next session). Cross-namespace rule pairing — T192 (`br.*`) for technique, T144 (`tm.*`) for resource consequence."
+
+prescription:
+  drill_template_id: "drill.tire_inspection_post_lockup_session"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "lockup_avg_severity_index"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["flat-spot risk transfers — the physics is the same on either platform, but the in-session consequence differs. Sim tires may model flat spots as a vibration penalty without the real-world failure-mode escalation (chunking, delamination), so the urgency framing (T144 over T192 in the prescription queue) is more important in real-car coaching. Real-car drivers should treat T144 as a session-altering signal: a confirmed flat spot mid-session may warrant an unscheduled stop to prevent escalation."]

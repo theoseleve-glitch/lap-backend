@@ -360,6 +360,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # T143 conjunction); this signal is included so a future
     # change to the decay value upstream doesn't surface T143.
     "stint_pace_decay_tire_attribution_pct": 0.10,
+    # T144 lockup-severity signal at mild value so
+    # `tm.lockup_pattern.flat_spot_risk` stays silent. T144
+    # reuses `lockup_event_count` (already 2 from T192 above,
+    # which short-circuits T144's >=3 count guard); this signal
+    # is included so a future change to lockup count upstream
+    # doesn't surface T144 inappropriately.
+    "lockup_avg_severity_index": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -566,6 +573,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # so `tm.stint_pace_decay.tire_degradation` stays silent
     # defensively. Same shape as firing fixture.
     "stint_pace_decay_tire_attribution_pct": 0.10,
+    # T144 lockup-severity signal at mild value so
+    # `tm.lockup_pattern.flat_spot_risk` stays silent. Same
+    # shape as firing fixture; lockup_event_count is 0 in this
+    # quiet context (set above), which short-circuits the
+    # conjunction.
+    "lockup_avg_severity_index": 0.10,
 }
 
 

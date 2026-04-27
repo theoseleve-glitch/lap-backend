@@ -45,6 +45,7 @@ TIRE_FUEL_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "tire_fuel"
 _EARLY_OVERHEAT_RULE_ID = "tm.tire_temp_overheat.aggressive_early"
 _WEAR_IMBALANCE_RULE_ID = "tm.tire_wear.unbalanced_front_rear"
 _TIRE_DECAY_RULE_ID = "tm.stint_pace_decay.tire_degradation"
+_FLAT_SPOT_RULE_ID = "tm.lockup_pattern.flat_spot_risk"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -70,6 +71,14 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T132 (driver-fade framing on lap_time alone).
     "stint_pace_decay_seconds_per_lap": 0.25,
     "stint_pace_decay_tire_attribution_pct": 0.85,
+    # T144 — flat-spot risk from severe lockups. REUSES T192's
+    # `lockup_event_count` and adds a severity guard: caller
+    # supplies the avg severity index across all lockups. Mild
+    # locks self-recover; severe locks scrub rubber and build
+    # flat spots. T144 is the tire-consequence framing of T192's
+    # braking-technique signal.
+    "lockup_event_count": 4,
+    "lockup_avg_severity_index": 0.65,
 }
 
 
@@ -359,4 +368,88 @@ def test_tire_decay_silent_when_decay_not_tire_attributable() -> None:
         f"{_TIRE_DECAY_RULE_ID} fired on driver-fade-attributed "
         f"decay — mis-prescribed tire-management drill for what "
         f"is a focus-discipline issue. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T144: tm.lockup_pattern.flat_spot_risk --------------------
+
+
+def test_flat_spot_fires_on_combined_lockup_count_and_severity() -> None:
+    """Both signals firing: 4 lockup events (above the 3-event
+    firing threshold — pattern, not one-off; same threshold
+    as T192) AND avg severity 0.65 (above the 0.50 firing
+    threshold — severe enough to scrub rubber, not mild self-
+    recovering locks). Pin: the canonical "your lockups are
+    accumulating into flat-spot risk" pattern produces an
+    insight that's distinct from T192 (`br.lockup.pattern_detection`,
+    which fires on count alone)."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lockup_event_count": 4,
+            "lockup_avg_severity_index": 0.65,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FLAT_SPOT_RULE_ID in fired_ids, (
+        f"expected {_FLAT_SPOT_RULE_ID} to fire on combined "
+        f"high-count + high-severity context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_flat_spot_silent_when_lockups_are_mild() -> None:
+    """Plenty of lockup events (4) but avg severity only 0.20 —
+    mild brushes that self-recover within a few wheel
+    rotations and don't scrub measurable rubber. T192 still
+    fires (count-only), but T144 must NOT — coaching "you're
+    flat-spotting your tires" when the lockups are too brief
+    to leave marks would over-state the consequence and
+    misroute the operator's attention away from T192's
+    braking-technique fix. Pin: the severity guard enforces
+    T144's flat-spot-risk framing, separate from T192's
+    lockup-detection framing."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lockup_event_count": 4,
+            "lockup_avg_severity_index": 0.20,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FLAT_SPOT_RULE_ID not in fired_ids, (
+        f"{_FLAT_SPOT_RULE_ID} fired on mild-lockup driver — "
+        f"over-stated flat-spot risk for self-recovering brushes. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_flat_spot_silent_when_lockup_count_too_low() -> None:
+    """High severity (0.65) but only 1 lockup event — a single
+    severe lockup is bad and worth attention via T192 (which
+    fires from 3+ events), but a single event isn't a pattern
+    of flat-spot accumulation. The rule must NOT fire — sample
+    size guard prevents firing on one-off severe locks (e.g.,
+    cold tire on out-lap, brake-balance miscalibration on first
+    lap). Pin: the >=3 event minimum aligns with T192's
+    detection threshold, requiring a pattern before flat-spot
+    risk becomes a prescription priority."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lockup_event_count": 1,
+            "lockup_avg_severity_index": 0.65,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FLAT_SPOT_RULE_ID not in fired_ids, (
+        f"{_FLAT_SPOT_RULE_ID} fired on 1-event sample — coached "
+        f"flat-spot risk from an isolated severe lockup. "
+        f"Fired: {sorted(fired_ids)}"
     )
