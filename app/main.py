@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.http_metrics import record_http_metrics
 from app.logging import configure_logging, logger
 from app.rate_limit import rate_limit_middleware
 from app.routers import admin as admin_router
@@ -74,6 +75,10 @@ app.add_middleware(
 )
 
 app.add_middleware(BaseHTTPMiddleware, dispatch=rate_limit_middleware)
+# T193 — count every response by (method, status_class) into
+# http_requests_total so the 5xx-rate alert in
+# deploy/prometheus/alerts.yml has a series to evaluate.
+app.add_middleware(BaseHTTPMiddleware, dispatch=record_http_metrics)
 
 
 @app.middleware("http")

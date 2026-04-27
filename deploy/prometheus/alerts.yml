@@ -1,0 +1,64 @@
+# Prometheus alerting rules — lap-backend (T193)
+#
+# This file is loaded by the prod Prometheus instance via its
+# `rule_files:` directive. Alerts here trigger Alertmanager,
+# which in turn pages PagerDuty / fires the Slack webhook (the
+# receiver routes are configured in Alertmanager, not here).
+#
+# Threshold derivation: docs/error-budget.md sets a 99.5%
+# monthly availability SLO for /api/v1/* endpoints. The
+# complement of 99.5% is the 0.5% error budget — sustained
+# burn at this rate exhausts the monthly budget in roughly 6
+# days, so the alert should page well before that.
+#
+# Adding a new rule here:
+#   1. Anchor it to a documented SLO in error-budget.md.
+#   2. Use a `for:` clause — single-minute spikes don't warrant
+#      paging; 'sustained' is the contract from the sprint task.
+#   3. Reference the runbook section in disaster-recovery.md.
+#
+# Validation: this file is loaded and pattern-checked by
+# tests/test_http_metrics_middleware_and_alert.py — a missing
+# rule, missing `for:`, or wrong threshold fails CI.
+
+groups:
+  - name: lap_backend_slo
+    interval: 30s
+    rules:
+
+      # 5xx-rate budget burn. Numerator and denominator both
+      # use rate() over the same 5m window so the ratio reflects
+      # current load, not lifetime-cumulative request counts.
+      # The denominator NaN-safety: if no requests are flowing
+      # at all, sum(rate(...)) is 0 and the ratio is NaN — the
+      # alert won't fire (NaN > 0.005 is false), which is the
+      # behavior we want. We don't want to page on quiet hours.
+      - alert: LapBackend5xxBudgetBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status_class="5xx"}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.005
+        for: 10m
+        labels:
+          severity: page
+          service: lap-backend
+          slo: availability
+        annotations:
+          summary: |
+            lap-backend 5xx error rate exceeds 0.5% SLO budget
+          description: |
+            5xx error rate over the last 5m has been above the
+            99.5% availability SLO threshold (0.5% errors
+            allowed) for at least 10m sustained.
+
+            Sustained burn at this rate will exhaust the
+            monthly error budget in roughly 6 days. See
+            docs/error-budget.md for the SLO derivation.
+
+            Investigate via Sentry (issue spike) and the
+            Grafana latency dashboard. The runbook for
+            availability incidents lives in
+            docs/disaster-recovery.md.
+          runbook: docs/disaster-recovery.md

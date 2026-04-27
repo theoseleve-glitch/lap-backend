@@ -68,3 +68,26 @@ next_session_plan_duration_seconds = Histogram(
     ),
     buckets=(0.05, 0.1, 0.2, 0.5, 1.0, 2.5, 5.0, 10.0),
 )
+
+# T193 — HTTP request counter feeding the SLO alert rule in
+# deploy/prometheus/alerts.yml. Labels are deliberately MINIMAL
+# (method + status_class) so cardinality stays bounded:
+# 7 verbs × 5 classes ≤ 35 active series. Labeling by raw path
+# would explode the count (every UUID-bearing route a fresh
+# series); the alert rule sums across labels anyway, so per-route
+# breakdown buys nothing for paging and a lot for storage cost.
+#
+# `status_class` is the leading digit of the HTTP status suffixed
+# with "xx" — "2xx", "4xx", "5xx", etc. The middleware in
+# `app.http_metrics.record_http_metrics` populates this on every
+# response and on unhandled exceptions (counted as 5xx before
+# re-raise — see that module's docstring for the ordering rationale).
+http_requests_total = Counter(
+    "http_requests_total",
+    (
+        "Total HTTP requests handled by the API, labeled by method"
+        " and status class. Backs the 5xx-rate SLO alert in"
+        " deploy/prometheus/alerts.yml."
+    ),
+    ["method", "status_class"],
+)
