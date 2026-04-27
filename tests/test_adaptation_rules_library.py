@@ -52,6 +52,7 @@ _TRAFFIC_DEFENSE_RULE_ID = "ad.traffic_loss.defensive_excess"
 _NEW_TRACK_RULE_ID = "ad.new_track.learning_rate_slow"
 _CAR_CHANGE_RULE_ID = "ad.car_change.transfer_gap"
 _QUALI_RACE_DELTA_RULE_ID = "ad.qualifying_vs_race.pace_delta"
+_PRESSURE_RESPONSE_RULE_ID = "ad.pressure_response.error_rate_spike"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -145,6 +146,17 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # commitment transfer failure mode.
     "qualifying_to_race_percentile_drop": 0.35,
     "clean_lap_count_in_race_session": 12,
+    # T159 — pressure-response error spike. Caller supplies a
+    # composite pressure-context score (championship implications,
+    # target-time leverage, broadcast vs practice, race-end window,
+    # etc.) and the driver's error rate as a multiple of their own
+    # low-pressure baseline (>=0.50 means errors 50% above
+    # baseline). Distinct from skill/fatigue/setup error rules by
+    # specifically tying the spike to a pressure context — same
+    # driver, same car, same setup, errors only spike when the
+    # pressure does.
+    "pressure_context_score": 0.80,
+    "error_rate_pct_above_low_pressure_baseline": 0.75,
 }
 
 
@@ -877,4 +889,91 @@ def test_quali_race_delta_silent_when_pace_transfers_cleanly() -> None:
         f"{_QUALI_RACE_DELTA_RULE_ID} fired on clean-transfer "
         f"driver — coached quali-to-race transfer to a driver "
         f"already transferring cleanly. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T159: ad.pressure_response.error_rate_spike ---------------
+
+
+def test_pressure_response_fires_on_combined_pressure_and_error_spike() -> None:
+    """Both signals firing: pressure-context score 0.80 (well
+    above the 0.60 firing threshold — high-pressure session via
+    composite of championship/broadcast/target-time leverage)
+    AND error rate 75% above low-pressure baseline (well above
+    the 0.50 firing threshold — meaningful spike, not noise).
+    Pin: the canonical "you make more mistakes when it matters"
+    pattern produces an insight, distinct from generic mistake-
+    rate rules by specifically attributing the spike to a
+    pressure context — same driver, same car, errors only spike
+    when the pressure does."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pressure_context_score": 0.80,
+            "error_rate_pct_above_low_pressure_baseline": 0.75,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PRESSURE_RESPONSE_RULE_ID in fired_ids, (
+        f"expected {_PRESSURE_RESPONSE_RULE_ID} to fire on combined "
+        f"high-pressure + high-error-spike context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_pressure_response_silent_when_pressure_context_low() -> None:
+    """Error rate 75% above baseline but pressure-context score
+    only 0.10 — low-stakes practice or development session, no
+    real pressure. The error spike is then attributable to
+    fatigue, setup change, or skill issue — not pressure
+    response. The rule must NOT fire — coaching "manage your
+    pressure response" to a driver whose error spike has no
+    pressure context would mis-attribute the cause and waste
+    their attention. Pin: the pressure-context guard separates
+    pressure-response failures from generic error-rate issues
+    (covered by other rules)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pressure_context_score": 0.10,
+            "error_rate_pct_above_low_pressure_baseline": 0.75,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PRESSURE_RESPONSE_RULE_ID not in fired_ids, (
+        f"{_PRESSURE_RESPONSE_RULE_ID} fired on low-pressure "
+        f"context — mis-attributed error spike to a non-existent "
+        f"pressure response. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_pressure_response_silent_when_driver_handles_pressure_well() -> None:
+    """High-pressure context (score 0.80 — championship-decisive,
+    broadcast, target-lap-time pressure) but error rate only 5%
+    above baseline. The driver handles pressure well — their
+    inputs and decisions stay calibrated under high stakes. The
+    rule must NOT fire — coaching "manage your pressure response"
+    to a driver who already manages it well would over-state the
+    issue. Pin: the error-spike guard prevents firing on every
+    high-pressure session regardless of how the driver responds.
+    The rule targets the specific pressure-induced-error failure
+    mode, not high-pressure sessions in isolation."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pressure_context_score": 0.80,
+            "error_rate_pct_above_low_pressure_baseline": 0.05,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PRESSURE_RESPONSE_RULE_ID not in fired_ids, (
+        f"{_PRESSURE_RESPONSE_RULE_ID} fired on driver who handles "
+        f"pressure well — coached pressure-response protocol to a "
+        f"driver already calibrated. Fired: {sorted(fired_ids)}"
     )

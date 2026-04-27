@@ -471,6 +471,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # below the >=5 sample-size guard for defense in depth.)
     "qualifying_to_race_percentile_drop": 0.05,
     "clean_lap_count_in_race_session": 4,
+    # T159 pressure-response signals at low-pressure / no-spike
+    # values so `ad.pressure_response.error_rate_spike` stays
+    # silent. (Both signals quiet — pressure score 0.10 is well
+    # below the >=0.60 firing threshold; error spike 0.05 is well
+    # below the >=0.50 firing threshold; either alone is load-
+    # bearing silencer.)
+    "pressure_context_score": 0.10,
+    "error_rate_pct_above_low_pressure_baseline": 0.05,
 }
 
 # A context where every braking rule should be silent — values
@@ -759,6 +767,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # independently.
     "qualifying_to_race_percentile_drop": 0.05,
     "clean_lap_count_in_race_session": 4,
+    # T159 pressure-response signals at low-pressure / no-spike
+    # values so `ad.pressure_response.error_rate_spike` stays
+    # silent. Same shape as firing fixture; both signals quiet
+    # independently.
+    "pressure_context_score": 0.10,
+    "error_rate_pct_above_low_pressure_baseline": 0.05,
 }
 
 
