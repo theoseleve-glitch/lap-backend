@@ -404,14 +404,17 @@ def test_post_invite_already_member_returns_409(
     assert resp.status_code == 409
 
 
-def test_post_invite_seats_exhausted_returns_409(
+def test_post_invite_seats_exhausted_returns_402(
     configured_app: dict[str, Any],
 ) -> None:
-    """seats_limit caps members + pending invites. Pin: enforces
-    the org's plan tier at the boundary; without it, an admin
-    could over-invite and silently create more invitations than
-    the seat budget allows, then have a chaotic accept/reject
-    queue when seats fill in arrival order."""
+    """T170 — seats_limit caps members + pending invites. Pin:
+    enforces the org's plan tier at the boundary; without it, an
+    admin could over-invite and silently create more invitations
+    than the seat budget allows, then have a chaotic accept/
+    reject queue when seats fill in arrival order. Status is
+    402 Payment Required (not 409) — semantically this is a
+    plan-tier limit, the client's CTA is 'upgrade plan' not
+    'retry'."""
     factory = configured_app["factory"]
     # seats_limit=2: admin + 1 pending = 2 → next invite rejected
     _, org_id = asyncio.run(
@@ -433,4 +436,36 @@ def test_post_invite_seats_exhausted_returns_409(
             headers=_hdrs(configured_app, "admin164f"),
             json={"email": "second@t.test", "role": "driver"},
         )
-    assert resp2.status_code == 409
+    assert resp2.status_code == 402
+
+
+def test_post_invite_seats_exhausted_detail_includes_usage(
+    configured_app: dict[str, Any],
+) -> None:
+    """T170 — the 402 body carries `code`, `seats_limit`, and
+    `seats_used` so the client UI can render 'X/Y seats — upgrade
+    your plan' without a second round-trip. Pin: detail shape is
+    the API contract for the upsell CTA."""
+    factory = configured_app["factory"]
+    _, org_id = asyncio.run(
+        _seed_admin_and_org(
+            factory, admin_clerk="admin170detail", seats_limit=2
+        )
+    )
+    with TestClient(app) as client:
+        client.post(
+            f"/api/v1/orgs/{org_id}/invites",
+            headers=_hdrs(configured_app, "admin170detail"),
+            json={"email": "first170@t.test", "role": "coach"},
+        )
+        resp = client.post(
+            f"/api/v1/orgs/{org_id}/invites",
+            headers=_hdrs(configured_app, "admin170detail"),
+            json={"email": "second170@t.test", "role": "driver"},
+        )
+    assert resp.status_code == 402
+    detail = resp.json()["detail"]
+    assert detail["code"] == "seats_exhausted"
+    assert detail["seats_limit"] == 2
+    # admin (1 member) + 1 pending invite = 2 seats used
+    assert detail["seats_used"] == 2

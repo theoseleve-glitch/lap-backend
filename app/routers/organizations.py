@@ -19,7 +19,9 @@ T163 endpoint:
 T164 endpoint:
   - validates the caller is the org admin (403 otherwise)
   - validates the email isn't already a member (409)
-  - validates members + pending invites < seats_limit (409)
+  - validates members + pending invites < seats_limit (T170:
+    402 Payment Required with detail dict carrying
+    {code, seats_limit, seats_used})
   - persists an OrganizationInvitation with a 256-bit random
     token (secrets.token_urlsafe(32)) and 7-day TTL
   - returns 201 with the full invitation shape including token
@@ -188,8 +190,9 @@ async def create_organization(
     response_model=OrgInvitationSchema,
     status_code=status.HTTP_201_CREATED,
     responses={
+        402: {"description": "seats_exhausted"},
         403: {"description": "not_org_admin"},
-        409: {"description": "conflict"},
+        409: {"description": "already_member"},
     },
 )
 async def create_organization_invitation(
@@ -256,10 +259,20 @@ async def create_organization_invitation(
             )
         )
     ).scalar_one()
-    if member_count + pending_invite_count >= org.seats_limit:
+    seats_used = member_count + pending_invite_count
+    if seats_used >= org.seats_limit:
+        # T170 — 402 Payment Required (not 409). Semantically
+        # this is a plan-tier limit, not a state conflict; the
+        # client's CTA is "upgrade your plan", not "retry".
+        # Detail dict carries the seat usage so the UI can
+        # render "X/Y seats" without a second round-trip.
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="seats_exhausted",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "code": "seats_exhausted",
+                "seats_limit": org.seats_limit,
+                "seats_used": seats_used,
+            },
         )
 
     invitation = OrgInvitationRow(
