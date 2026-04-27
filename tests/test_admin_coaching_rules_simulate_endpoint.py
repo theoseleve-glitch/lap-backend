@@ -290,6 +290,12 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # the silent path independently.)
     "sector_1_lap_time_stddev_seconds": 0.05,
     "sector_1_stddev_share_of_total": 0.34,
+    # T134 brake-point drift magnitude at locked-brake-point value
+    # so `co.braking_point_drift.over_run` stays silent. (0.10m/lap
+    # is well below the >=0.50m/lap firing threshold and is the
+    # load-bearing silencer; clean_lap_count 8 from T131 above
+    # satisfies the >=5 sample-size guard.)
+    "brake_point_drift_magnitude_meters_per_lap": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -435,6 +441,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # the absolute stddev (0.05s, well below the >=0.15s floor).
     "sector_1_lap_time_stddev_seconds": 0.05,
     "sector_1_stddev_share_of_total": 0.34,
+    # T134 brake-point drift magnitude at locked-brake-point value
+    # so `co.braking_point_drift.over_run` stays silent. Same
+    # shape as the firing fixture; load-bearing silencer is the
+    # magnitude (0.10m/lap, well below the >=0.50m/lap threshold).
+    "brake_point_drift_magnitude_meters_per_lap": 0.10,
 }
 
 

@@ -42,6 +42,7 @@ CONSISTENCY_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "consistency"
 _HIGH_SPREAD_RULE_ID = "co.lap_time_variance.high_spread"
 _FADE_OVER_RUN_RULE_ID = "co.lap_time_trend.fade_over_run"
 _T1_VOLATILE_RULE_ID = "co.sector_consistency.t1_volatile"
+_BRAKE_DRIFT_RULE_ID = "co.braking_point_drift.over_run"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -60,6 +61,13 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # be concentrated in S1 (share guard), not session-wide.
     "sector_1_lap_time_stddev_seconds": 0.25,
     "sector_1_stddev_share_of_total": 0.65,
+    # T134 — brake-point drift magnitude (caller supplies abs()
+    # of the brake-point slope; condition compiler doesn't allow
+    # function calls — see ADR-condition-compiler whitelist).
+    # Magnitude framing covers both creep-earlier and drift-later
+    # rhythm losses with a single threshold.
+    "brake_point_drift_magnitude_meters_per_lap": 0.80,
+    "brake_point_drift_signed_meters_per_lap": 0.80,
 }
 
 
@@ -336,4 +344,82 @@ def test_t1_volatile_silent_when_absolute_stddev_too_small() -> None:
         f"{_T1_VOLATILE_RULE_ID} fired on noise-floor S1 stddev — "
         f"coached a non-issue. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T134: co.braking_point_drift.over_run ---------------------
+
+
+def test_brake_drift_fires_on_combined_high_magnitude_and_long_run() -> None:
+    """Both signals firing: brake-point drift magnitude 0.80m/lap
+    (well above the 0.50m/lap firing threshold — clear rhythm
+    loss) AND 8 clean laps in the run (well past the 5-lap
+    minimum needed to compute a meaningful trend). Pin: the
+    canonical "your brake points are drifting across the run"
+    pattern produces an insight. Distinct from T132 (lap-time
+    fade) by surfacing the channel-level cause — brake-point
+    creep — so the drill is brake-point-anchor, not generic
+    focus."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "brake_point_drift_magnitude_meters_per_lap": 0.80,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _BRAKE_DRIFT_RULE_ID in fired_ids, (
+        f"expected {_BRAKE_DRIFT_RULE_ID} to fire on combined "
+        f"high-magnitude + long-run context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_brake_drift_silent_when_run_too_short() -> None:
+    """Drift magnitude 0.80m/lap (would fire on a long run) but
+    only 4 clean laps. A 4-lap brake-point trend is dominated
+    by single-lap noise — one missed brake point inflates the
+    slope. The rule must NOT fire — sample size guard prevents
+    premature drift diagnosis. Pin: the >=5 lap minimum keeps
+    brake-point trends statistically meaningful."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "brake_point_drift_magnitude_meters_per_lap": 0.80,
+            "clean_lap_count_in_session": 4,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _BRAKE_DRIFT_RULE_ID not in fired_ids, (
+        f"{_BRAKE_DRIFT_RULE_ID} fired on 4-lap run — coached "
+        f"brake-point drift from a sample size where slope is "
+        f"noise. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_brake_drift_silent_when_brake_points_locked() -> None:
+    """Long run (8 clean laps) but drift magnitude only 0.10m/lap —
+    the driver's brake points are essentially locked across the
+    run (within noise floor). The rule must NOT fire — coaching
+    "your brake points drift" to a driver hitting the same brake
+    point every lap is noise. Pin: the magnitude guard prevents
+    firing on every long run regardless of brake-point trend."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "brake_point_drift_magnitude_meters_per_lap": 0.10,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _BRAKE_DRIFT_RULE_ID not in fired_ids, (
+        f"{_BRAKE_DRIFT_RULE_ID} fired on locked-brake-point "
+        f"driver — coached drift to a driver with consistent "
+        f"brake points. Fired: {sorted(fired_ids)}"
     )
