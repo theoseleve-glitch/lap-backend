@@ -1,0 +1,37 @@
+id: "cs.apex_miss.early_turn"
+version: 1
+category: technique
+subcategory: apex_miss
+difficulty: beginner
+
+detection:
+  signal: turn_in_distance_m_before_optimal
+  condition: "turn_in_distance_m_before_optimal >= 5.0 and apex_position_pct_through_corner <= 0.40"
+  context:
+    must_have_channels: ["steering", "speed", "g_lat"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 5m = low, 8m = medium, 12m = high"
+
+explanation_template:
+  beginner: "On {{corner}} you turned in {{turn_in_distance_m_before_optimal}}m too early — your apex landed at {{apex_position_pct_through_corner}} of the corner, before the geometric middle. Early turn-in pulls you to the apex too soon, and once you're there the car can't keep rotating, so you'll run wide on exit. Wait longer before initiating the turn."
+  intermediate: "Early turn-in error on {{corner}} — turn-in {{turn_in_distance_m_before_optimal}}m before optimal, apex position {{apex_position_pct_through_corner}}. Premature steering input shortens the rotation window; the apex falls early, exit angle suffers, and the car runs to the outside curb. Anchor a later turn-in reference and trust it."
+  advanced: "Early-turn apex miss on {{corner}}: turn_in_offset={{turn_in_distance_m_before_optimal}}m early, apex_pos={{apex_position_pct_through_corner}}. Each 5m of early turn-in shifts the apex ~10% earlier and costs ~5-8 degrees of exit-line angle; recover by deferring steering initiation and accepting later brake release to maintain the rotation envelope."
+
+prescription:
+  drill_template_id: "drill.late_turn_in_anchor"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "turn_in_distance_m_before_optimal"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["turn-in timing references differ between sim and real (real cars use peripheral cues sim can't render); the technique correction transfers but the reference points need to be re-learned platform-by-platform."]

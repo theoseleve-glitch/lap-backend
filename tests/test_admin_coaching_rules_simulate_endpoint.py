@@ -227,6 +227,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # silent.
     "min_corner_speed_excess_pct": 0.01,
     "apex_lateral_offset_m": 0.10,
+    # T123 early-turn signal at on-time value so
+    # `cs.apex_miss.early_turn` stays silent. (apex_position
+    # is shared with T121 — already 0.50 above, also quiet
+    # for T123 which fires <=0.40.)
+    "turn_in_distance_m_before_optimal": 0.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -312,6 +317,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # silent.
     "min_corner_speed_excess_pct": 0.01,
     "apex_lateral_offset_m": 0.10,
+    # T123 early-turn signal at on-time value so
+    # `cs.apex_miss.early_turn` stays silent. (apex_position
+    # is shared with T121 — already 0.50 above, also quiet
+    # for T123 which fires <=0.40.)
+    "turn_in_distance_m_before_optimal": 0.0,
 }
 
 

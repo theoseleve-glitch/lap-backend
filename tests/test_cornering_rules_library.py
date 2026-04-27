@@ -40,6 +40,7 @@ CORNERING_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "cornering"
 
 _LATE_APEX_RULE_ID = "cs.min_speed.too_low_late_apex"
 _WIDE_LINE_RULE_ID = "cs.min_speed.too_high_wide_line"
+_EARLY_TURN_RULE_ID = "cs.apex_miss.early_turn"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -52,6 +53,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T122 — too-high min speed / wide-line signals.
     "min_corner_speed_excess_pct": 0.07,
     "apex_lateral_offset_m": 0.80,
+    # T123 — early-turn / early-apex signal (apex_position
+    # already declared above for T121).
+    "turn_in_distance_m_before_optimal": 8.0,
 }
 
 
@@ -244,5 +248,81 @@ def test_wide_line_silent_when_on_proper_line() -> None:
     assert _WIDE_LINE_RULE_ID not in fired_ids, (
         f"{_WIDE_LINE_RULE_ID} fired on faster-but-on-line "
         f"context — flagged a faster driver as wrong. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T123: cs.apex_miss.early_turn -----------------------------
+
+
+def test_early_turn_fires_on_combined_early_turn_and_early_apex() -> None:
+    """Both signals firing: turn-in 8m before the optimal
+    point AND apex hit at 30% through the corner (well before
+    the 40% early-apex floor). Pin: the canonical "turned in
+    too early, hit the apex too soon, ran out wide on exit"
+    pattern produces an insight rather than firing on every
+    early-apex line (which can be a deliberate kerb cut)."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "turn_in_distance_m_before_optimal": 8.0,
+            "apex_position_pct_through_corner": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EARLY_TURN_RULE_ID in fired_ids, (
+        f"expected {_EARLY_TURN_RULE_ID} to fire on combined "
+        f"early-turn + early-apex context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_early_turn_silent_when_turn_in_on_time() -> None:
+    """Apex at 30% (early) but turn-in 1m before optimal
+    (essentially on time — could be a deliberate cut over an
+    inside kerb that drops the apex point earlier). The rule
+    must NOT fire — early-apex from a tactical kerb cut is
+    not a turn-in error. Pin: the conjunction prevents flagging
+    deliberate kerb-cutting technique."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "turn_in_distance_m_before_optimal": 1.0,
+            "apex_position_pct_through_corner": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EARLY_TURN_RULE_ID not in fired_ids, (
+        f"{_EARLY_TURN_RULE_ID} fired on on-time-turn / early-"
+        f"apex context — flagged a deliberate kerb cut. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_early_turn_silent_when_apex_on_time() -> None:
+    """Turn-in 8m before optimal (early) but apex at 50% (on
+    time — driver turned in early but recovered with smooth
+    rotation / late brake release, landing the apex correctly).
+    The rule must NOT fire — turn-in timing alone doesn't
+    matter if the apex still lands right. Pin: the conjunction
+    prevents flagging recoverable early-turn-in mistakes that
+    didn't propagate to apex placement."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "turn_in_distance_m_before_optimal": 8.0,
+            "apex_position_pct_through_corner": 0.50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EARLY_TURN_RULE_ID not in fired_ids, (
+        f"{_EARLY_TURN_RULE_ID} fired on early-turn / on-time-"
+        f"apex context — flagged a recovered turn-in. "
         f"Fired: {sorted(fired_ids)}"
     )
