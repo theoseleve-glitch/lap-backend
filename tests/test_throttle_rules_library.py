@@ -40,6 +40,7 @@ THROTTLE_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "throttle"
 _SNAP_RULE_ID = "th.early_throttle.snap_oversteer"
 _LATE_RULE_ID = "th.late_throttle.exit_speed_loss"
 _ABRUPT_RULE_ID = "th.abrupt_pickup.traction_break"
+_PARTIAL_RULE_ID = "th.partial_throttle.mid_corner"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -57,6 +58,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T113 — abrupt-pickup signals.
     "throttle_application_rate_pct_per_s": 400,
     "traction_break_event_count": 2,
+    # T114 — partial-throttle / coasting signals.
+    "partial_throttle_duration_at_apex_ms": 350,
+    "coast_time_pct_in_corner": 0.30,
 }
 
 
@@ -330,5 +334,76 @@ def test_abrupt_pickup_silent_when_no_traction_break() -> None:
     assert _ABRUPT_RULE_ID not in fired_ids, (
         f"{_ABRUPT_RULE_ID} fired on abrupt-but-clean pickup — "
         f"flagged a quick driver who got away with it. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T114: th.partial_throttle.mid_corner ----------------------
+
+
+def test_partial_throttle_fires_on_combined_dwell_and_coast() -> None:
+    """Both signals firing: 350ms dwelling in partial-throttle
+    band and 30% of corner time coasting (no brake, no throttle).
+    Pin: the canonical "afraid to commit, riding the corner on
+    inertia" pattern produces an insight."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "partial_throttle_duration_at_apex_ms": 350,
+            "coast_time_pct_in_corner": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PARTIAL_RULE_ID in fired_ids, (
+        f"expected {_PARTIAL_RULE_ID} to fire on combined "
+        f"dwell-and-coast context, got {sorted(fired_ids)}"
+    )
+
+
+def test_partial_throttle_silent_when_no_dwell() -> None:
+    """No dwelling in partial-throttle band (driver either coasts
+    cleanly OR commits cleanly — fast transitions through the
+    band). Even with high coast pct (could be a fast sweeper that
+    rewards momentum, not throttle), the rule must NOT fire — the
+    rule targets indecision, not strategic coasting."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "partial_throttle_duration_at_apex_ms": 50,
+            "coast_time_pct_in_corner": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PARTIAL_RULE_ID not in fired_ids, (
+        f"{_PARTIAL_RULE_ID} fired on no-dwell / high-coast — "
+        f"flagged a momentum-cornering driver. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_partial_throttle_silent_when_no_coast() -> None:
+    """350ms dwelling in partial-throttle but 5% coast time
+    (driver's modulating throttle through the band rather than
+    coasting). The rule must NOT fire — modulation through the
+    band is fine technique on a slow corner; coasting through
+    is the actionable problem. Pin: the conjunction protects
+    against flagging modulators."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "partial_throttle_duration_at_apex_ms": 350,
+            "coast_time_pct_in_corner": 0.05,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PARTIAL_RULE_ID not in fired_ids, (
+        f"{_PARTIAL_RULE_ID} fired on dwell-but-no-coast — "
+        f"flagged a throttle-modulating driver. "
         f"Fired: {sorted(fired_ids)}"
     )

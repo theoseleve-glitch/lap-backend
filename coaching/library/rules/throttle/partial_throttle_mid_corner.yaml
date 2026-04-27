@@ -1,0 +1,37 @@
+id: "th.partial_throttle.mid_corner"
+version: 1
+category: technique
+subcategory: partial_throttle
+difficulty: beginner
+
+detection:
+  signal: partial_throttle_duration_at_apex_ms
+  condition: "partial_throttle_duration_at_apex_ms > 250 and coast_time_pct_in_corner > 0.20"
+  context:
+    must_have_channels: ["throttle", "brake", "speed"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 250 = low, 400 = medium, 600 = high"
+
+explanation_template:
+  beginner: "On {{corner}} you held partial throttle for {{partial_throttle_duration_at_apex_ms}}ms and spent {{coast_time_pct_in_corner}} of the corner coasting on neither pedal. You're hesitating — pick a side: either trail brake deeper or commit the throttle earlier. Coasting wastes mid-corner time."
+  intermediate: "Mid-corner indecision on {{corner}} — partial-throttle dwell {{partial_throttle_duration_at_apex_ms}}ms, coast share {{coast_time_pct_in_corner}}. Replace the dead zone with either a longer trail-brake into the apex or an earlier throttle commitment past the apex."
+  advanced: "Partial-throttle event on {{corner}}: dwell={{partial_throttle_duration_at_apex_ms}}ms, coast_pct={{coast_time_pct_in_corner}}. Convert the coast wedge to either braking (carry more entry speed and trail to apex) or throttle (commit on unwind); both reclaim ~0.1-0.2s on a fast sweeper."
+
+prescription:
+  drill_template_id: "drill.commit_or_brake_no_coast"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "coast_time_pct_in_corner"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["real cars reward coasting more than sim because tire load transfer is less aggressive — a small coast wedge that's a problem in sim might be optimal trail-style technique in real, especially for road-tire setups"]

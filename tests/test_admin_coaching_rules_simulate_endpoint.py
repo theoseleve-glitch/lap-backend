@@ -188,6 +188,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `th.abrupt_pickup.traction_break` stays silent.
     "throttle_application_rate_pct_per_s": 150,
     "traction_break_event_count": 0,
+    # T114 partial-throttle signals at clean-commitment values
+    # so `th.partial_throttle.mid_corner` stays silent.
+    "partial_throttle_duration_at_apex_ms": 50,
+    "coast_time_pct_in_corner": 0.05,
 }
 
 # A context where every braking rule should be silent — values
@@ -234,6 +238,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # `th.abrupt_pickup.traction_break` stays silent.
     "throttle_application_rate_pct_per_s": 150,
     "traction_break_event_count": 0,
+    # T114 partial-throttle signals at clean-commitment values
+    # so `th.partial_throttle.mid_corner` stays silent.
+    "partial_throttle_duration_at_apex_ms": 50,
+    "coast_time_pct_in_corner": 0.05,
 }
 
 
