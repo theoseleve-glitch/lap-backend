@@ -367,6 +367,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # is included so a future change to lockup count upstream
     # doesn't surface T144 inappropriately.
     "lockup_avg_severity_index": 0.10,
+    # T145 fuel-burn-excess signal at on-target value so
+    # `fm.fuel_burn_excess.vs_target` stays silent. (Excess
+    # 0.01 is well below the >=0.05 firing threshold and is
+    # the load-bearing silencer; the existing
+    # `clean_lap_count_in_session: 5` from T131 above already
+    # satisfies T145's >=5 sample-size guard.)
+    "fuel_burn_excess_pct_above_target": 0.01,
 }
 
 # A context where every braking rule should be silent — values
@@ -579,6 +586,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # quiet context (set above), which short-circuits the
     # conjunction.
     "lockup_avg_severity_index": 0.10,
+    # T145 fuel-burn-excess signal at on-target value so
+    # `fm.fuel_burn_excess.vs_target` stays silent. Same shape
+    # as firing fixture; load-bearing silencer is the excess
+    # (0.01, well below the >=0.05 firing threshold).
+    "fuel_burn_excess_pct_above_target": 0.01,
 }
 
 

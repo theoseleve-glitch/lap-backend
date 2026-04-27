@@ -1,0 +1,37 @@
+id: "fm.fuel_burn_excess.vs_target"
+version: 1
+category: strategy
+subcategory: fuel_burn_excess
+difficulty: beginner
+
+detection:
+  signal: fuel_burn_excess_pct_above_target
+  condition: "fuel_burn_excess_pct_above_target >= 0.05 and clean_lap_count_in_session >= 5"
+  context:
+    must_have_channels: ["fuel_level", "lap_time", "lap_number"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.05 = low, 0.08 = medium, 0.15 = high"
+
+explanation_template:
+  beginner: "You burned fuel {{fuel_burn_excess_pct_above_target}} faster than the strategist's target across {{clean_lap_count_in_session}} clean laps. Over a race that compounds: 8% per lap means an extra splash by lap 30, which is a forced unscheduled stop. The big levers are short-shifting the highest-revving gear in the long straights and lifting earlier into low-load corners. Pace cost is small; strategy cost is large."
+  intermediate: "Fuel burn excess {{fuel_burn_excess_pct_above_target}} vs target, n={{clean_lap_count_in_session}} clean laps. The actionable levers ranked by lap-time cost: short-shift in long straights (≈ -0.05 s/lap, -3% fuel), lift-early into low-load corners (≈ -0.10 s/lap, -2% fuel), throttle-saturation reduction in T1-style heavy-traction zones (≈ -0.15 s/lap, -1% fuel). Pick the lever with the best fuel-per-second-lost ratio; the rest of the strategy depends on which stop-count the team is targeting."
+  advanced: "Per-lap fuel excess {{fuel_burn_excess_pct_above_target}}, n={{clean_lap_count_in_session}}. Distinct from T091 (preparation) and T104 (strategy execution score) by surfacing the per-lap burn signal directly — T091 fires before the session, T104 fires post-session as a composite, T145 fires mid-session with a specific lever set. Fuel-saving and lap-time are not strictly opposed: short-shifting at peak-power RPM costs ~30% less time than the equivalent fuel saved via lift-and-coast (T146 territory). T146 (`fm.lift_and_coast.too_rare`) is the diagnostic pair — fires when this rule fires AND the driver isn't using the cheapest lever."
+
+prescription:
+  drill_template_id: "drill.fuel_lever_ranked_per_lap"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "fuel_burn_excess_pct_above_target"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["fuel-management discipline transfers — short-shift / lift-and-coast / throttle-saturation reduction are the same skills on either platform. Sim fuel models vary in fidelity (some flat per-lap, others responsive to map / engine-mode); the rule is most useful in sim titles with detailed fuel models. Real-car drivers also face engine-map transitions and fuel-flow regulation that can decouple driver action from the fuel-burn signal; threshold may need a small relaxation (e.g., 0.07) for real-car cohorts in series with strict fuel-flow regulation."]

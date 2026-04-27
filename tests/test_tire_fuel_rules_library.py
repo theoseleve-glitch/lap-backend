@@ -46,6 +46,7 @@ _EARLY_OVERHEAT_RULE_ID = "tm.tire_temp_overheat.aggressive_early"
 _WEAR_IMBALANCE_RULE_ID = "tm.tire_wear.unbalanced_front_rear"
 _TIRE_DECAY_RULE_ID = "tm.stint_pace_decay.tire_degradation"
 _FLAT_SPOT_RULE_ID = "tm.lockup_pattern.flat_spot_risk"
+_FUEL_BURN_EXCESS_RULE_ID = "fm.fuel_burn_excess.vs_target"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -79,6 +80,12 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # braking-technique signal.
     "lockup_event_count": 4,
     "lockup_avg_severity_index": 0.65,
+    # T145 — opens fuel-management `fm.*` namespace. Driver burning
+    # more fuel per lap than the strategist's target. Caller
+    # supplies the percentage excess vs target (avoids needing
+    # division in the condition compiler).
+    "fuel_burn_excess_pct_above_target": 0.08,
+    "clean_lap_count_in_session": 8,
 }
 
 
@@ -100,15 +107,20 @@ def test_at_least_one_tire_fuel_rule_authored() -> None:
     )
 
 
-def test_every_tire_fuel_rule_id_starts_with_tm_prefix() -> None:
-    """Prefix collision check. A future contributor copying a
-    `cs.*` / `co.*` / `rc.*` template into the tire/fuel dir
-    without renaming the id would silently shadow another
-    namespace via the loader's id-uniqueness check, and the
-    rules engine would misroute evidence. Pin the namespacing
-    convention."""
+def test_every_tire_fuel_rule_id_starts_with_tm_or_fm_prefix() -> None:
+    """Prefix collision check. The tire/fuel directory is shared
+    by `tm.*` (tire management) and `fm.*` (fuel management) —
+    both are multi-lap / multi-stint resource decisions. A
+    future contributor copying a `cs.*` / `co.*` / `rc.*`
+    template into this dir without renaming the id would
+    silently shadow another namespace via the loader's id-
+    uniqueness check, and the rules engine would misroute
+    evidence. Pin the namespacing convention."""
     rules = load_rules(TIRE_FUEL_DIR)
-    bad = [r.id for r in rules if not r.id.startswith("tm.")]
+    bad = [
+        r.id for r in rules
+        if not (r.id.startswith("tm.") or r.id.startswith("fm."))
+    ]
     assert not bad, f"non-tire/fuel ids in tire/fuel dir: {bad}"
 
 
@@ -452,4 +464,83 @@ def test_flat_spot_silent_when_lockup_count_too_low() -> None:
         f"{_FLAT_SPOT_RULE_ID} fired on 1-event sample — coached "
         f"flat-spot risk from an isolated severe lockup. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T145: fm.fuel_burn_excess.vs_target -----------------------
+
+
+def test_fuel_burn_fires_on_combined_excess_and_enough_laps() -> None:
+    """Both signals firing: 8% above target fuel-burn (well
+    above the 0.05 firing threshold — meaningful excess) AND
+    8 clean laps in the session (well past the 5-lap minimum
+    sample size). Pin: the canonical "you're burning more fuel
+    than the strategist budgeted" pattern produces an insight —
+    distinct from T091 (preparation) and T104 (strategy
+    execution score) by surfacing the per-lap fuel-burn signal
+    specifically."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "fuel_burn_excess_pct_above_target": 0.08,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FUEL_BURN_EXCESS_RULE_ID in fired_ids, (
+        f"expected {_FUEL_BURN_EXCESS_RULE_ID} to fire on combined "
+        f"high-excess + enough-laps context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_fuel_burn_silent_when_lap_count_too_low() -> None:
+    """High excess (8% above target) but only 2 clean laps. A
+    2-lap sample is dominated by single-lap noise — one
+    aggressive lap, one DRS-train lap, one cold-tires push
+    lap. The rule must NOT fire — sample size guard prevents
+    firing on an unrepresentative slice. Pin: the >=5 lap
+    minimum keeps the per-lap fuel-burn average meaningful."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "fuel_burn_excess_pct_above_target": 0.08,
+            "clean_lap_count_in_session": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FUEL_BURN_EXCESS_RULE_ID not in fired_ids, (
+        f"{_FUEL_BURN_EXCESS_RULE_ID} fired on 2-lap sample — "
+        f"coached fuel management from a sample size where the "
+        f"average is noise. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_fuel_burn_silent_when_burn_on_target() -> None:
+    """Plenty of laps (8) but excess only 1% — the driver is
+    matching the strategist's fuel target within the noise
+    floor. The rule must NOT fire — coaching "save fuel" to a
+    driver already on-target is wrong; over-saving leaves
+    pace on the table. Pin: the excess guard prevents firing
+    on every multi-lap session regardless of fuel burn. The
+    rule targets the over-burn failure mode specifically, not
+    session length."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "fuel_burn_excess_pct_above_target": 0.01,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FUEL_BURN_EXCESS_RULE_ID not in fired_ids, (
+        f"{_FUEL_BURN_EXCESS_RULE_ID} fired on on-target driver — "
+        f"coached fuel-saving to a driver already matching the "
+        f"strategist's target. Fired: {sorted(fired_ids)}"
     )
