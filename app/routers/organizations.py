@@ -1,4 +1,4 @@
-"""T163-T169 (sprint2-backend) — organizations endpoints.
+"""T163-T171 (sprint2-backend) — organizations endpoints.
 
 T163 — POST   /api/v1/orgs creates an Organization.
 T164 — POST   /api/v1/orgs/:id/invites creates an invitation row.
@@ -6,6 +6,7 @@ T165 — POST   /api/v1/orgs/:id/invites/:token/accept redeems it.
 T166 — DELETE /api/v1/orgs/:id/members/:user_id removes member.
 T167 — GET    /api/v1/orgs/:id/members lists members under RLS.
 T169 — GET    /api/v1/orgs/:id/drivers/:uid/profile coach view.
+T171 — GET    /api/v1/orgs/:id/dashboard coach roster.
 
 T163 endpoint:
   - assigns admin_user_id to the calling user
@@ -93,6 +94,8 @@ from uuid import UUID
 import uuid6
 from fastapi import APIRouter, Depends, HTTPException, status
 from lap_schemas.v1 import (
+    CoachDashboardDriverEntry,
+    CoachDashboardResponse,
     DriverProfileAggregate,
     OrganizationCreate,
     OrganizationInvitationCreate,
@@ -113,10 +116,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
 from app.routers.driver_profile import build_driver_profile_aggregate
+from infra.orm import ActionPrescription as ActionPrescriptionRow
+from infra.orm import DriverProfile as DriverProfileRow
+from infra.orm import DriverProgressSnapshot as ProgressSnapshotRow
 from infra.orm import Organization as OrganizationRow
 from infra.orm import OrganizationInvitation as OrgInvitationRow
 from infra.orm import OrganizationMember as OrganizationMemberRow
 from infra.orm import User as UserRow
+from infra.orm import WeaknessEpisode as WeaknessEpisodeRow
 from infra.stripe import update_subscription_quantity
 
 router = APIRouter(prefix="/api/v1/orgs", tags=["organizations"])
@@ -540,3 +547,127 @@ async def view_org_driver_profile(
             detail="not_authorized",
         )
     return await build_driver_profile_aggregate(db, user_id)
+
+
+# T171 — open-status enums match the existing per-route conventions
+# (skills.py for weaknesses, driver_profile.py for prescriptions).
+# Duplicated here rather than imported to avoid cross-router
+# coupling for what is effectively a domain constant.
+_OPEN_WEAKNESS_STATUSES = ("open", "improving")
+_OPEN_RX_STATUSES = ("proposed", "accepted", "in_progress")
+
+
+@router.get(
+    "/{org_id}/dashboard",
+    response_model=CoachDashboardResponse,
+    responses={
+        403: {"description": "not_authorized"},
+    },
+)
+async def get_coach_dashboard(
+    org_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CoachDashboardResponse:
+    """T171 — coach / admin lists per-driver progress entries.
+
+    Authz: caller must be admin or coach in the org. Drivers and
+    non-members both 403 (status parity).
+
+    The entries cover every driver-role member of the org, even
+    those without a DriverProfile row yet (nullable identity +
+    zero counts).
+    """
+    caller_membership = (
+        await db.execute(
+            select(OrganizationMemberRow).where(
+                OrganizationMemberRow.org_id == org_id,
+                OrganizationMemberRow.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if caller_membership is None or caller_membership.role == "driver":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_authorized",
+        )
+
+    driver_user_ids = list(
+        (
+            await db.execute(
+                select(OrganizationMemberRow.user_id).where(
+                    OrganizationMemberRow.org_id == org_id,
+                    OrganizationMemberRow.role == "driver",
+                )
+            )
+        ).scalars()
+    )
+
+    entries = tuple(
+        [
+            await _build_dashboard_entry(db, uid)
+            for uid in driver_user_ids
+        ]
+    )
+    return CoachDashboardResponse(entries=entries)
+
+
+async def _build_dashboard_entry(
+    db: AsyncSession, target_user_id: UUID
+) -> CoachDashboardDriverEntry:
+    """Compose a per-driver dashboard row.
+
+    A driver may not have a DriverProfile yet (org member who
+    hasn't bootstrapped); in that case the row carries only the
+    user_id with everything else nullable / zero. Consistent
+    with the schema's defaults.
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == target_user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        return CoachDashboardDriverEntry(user_id=target_user_id)
+
+    latest_snap = (
+        await db.execute(
+            select(ProgressSnapshotRow)
+            .where(ProgressSnapshotRow.driver_id == profile.id)
+            .order_by(ProgressSnapshotRow.captured_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    open_weaknesses = (
+        await db.execute(
+            select(func.count(WeaknessEpisodeRow.id)).where(
+                WeaknessEpisodeRow.driver_id == profile.id,
+                WeaknessEpisodeRow.status.in_(
+                    _OPEN_WEAKNESS_STATUSES
+                ),
+            )
+        )
+    ).scalar_one()
+    open_rx = (
+        await db.execute(
+            select(func.count(ActionPrescriptionRow.id)).where(
+                ActionPrescriptionRow.driver_id == profile.id,
+                ActionPrescriptionRow.status.in_(_OPEN_RX_STATUSES),
+            )
+        )
+    ).scalar_one()
+    return CoachDashboardDriverEntry(
+        user_id=target_user_id,
+        display_name=profile.display_name,
+        skill_level=profile.skill_level,
+        overall_score=(
+            latest_snap.overall_score if latest_snap else None
+        ),
+        last_progress_at=(
+            latest_snap.captured_at if latest_snap else None
+        ),
+        open_weaknesses=int(open_weaknesses),
+        open_prescriptions=int(open_rx),
+    )
