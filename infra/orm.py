@@ -962,3 +962,37 @@ class StrategyTemplate(Base):
             name="uq_strategy_templates_driver_id_name",
         ),
     )
+
+
+class Organization(Base):
+    """T161 — org-scoped container for team / fleet / coaching-
+    academy use cases. Owns members (T162), invitations (T164),
+    and seat-cap enforcement (T164). Distinct from `User` /
+    `DriverProfile` which are individual-scoped: orgs are
+    multi-user shared workspaces with their own billing and
+    member-role permissions.
+
+    `admin_user_id` FK → users.id is the org admin (typically
+    the creator). RBAC checks downstream rely on this being a
+    real, present user — not just a typed UUID — so the FK is
+    enforced at the schema layer. No cascade: deleting an admin
+    user must fail loudly rather than silently orphan the org's
+    members and billing record.
+    """
+
+    __tablename__ = "organizations"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid6.uuid7
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    plan: Mapped[str] = mapped_column(
+        String(32), default="free", server_default="free"
+    )
+    admin_user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    seats_limit: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
