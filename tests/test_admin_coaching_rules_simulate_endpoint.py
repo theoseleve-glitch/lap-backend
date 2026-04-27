@@ -353,6 +353,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `stint_lap_count: 100` from T074 above already satisfies
     # T142's >=5 lap sample-size guard.)
     "tire_wear_front_rear_imbalance_abs_pct": 0.05,
+    # T143 tire-attributed decay attribution signal at low value
+    # so `tm.stint_pace_decay.tire_degradation` stays silent
+    # defensively. T143 reuses `stint_pace_decay_seconds_per_lap`
+    # (already 0.0 from T074 above, which short-circuits the
+    # T143 conjunction); this signal is included so a future
+    # change to the decay value upstream doesn't surface T143.
+    "stint_pace_decay_tire_attribution_pct": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -555,6 +562,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # The existing `stint_lap_count: 100` from T074 above already
     # satisfies T142's >=5 sample-size guard.
     "tire_wear_front_rear_imbalance_abs_pct": 0.05,
+    # T143 tire-attributed decay attribution signal at low value
+    # so `tm.stint_pace_decay.tire_degradation` stays silent
+    # defensively. Same shape as firing fixture.
+    "stint_pace_decay_tire_attribution_pct": 0.10,
 }
 
 

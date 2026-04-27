@@ -44,6 +44,7 @@ TIRE_FUEL_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "tire_fuel"
 
 _EARLY_OVERHEAT_RULE_ID = "tm.tire_temp_overheat.aggressive_early"
 _WEAR_IMBALANCE_RULE_ID = "tm.tire_wear.unbalanced_front_rear"
+_TIRE_DECAY_RULE_ID = "tm.stint_pace_decay.tire_degradation"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -61,6 +62,14 @@ _TEMPLATE_VARS: dict[str, Any] = {
     "tire_wear_front_rear_imbalance_abs_pct": 0.30,
     "tire_wear_front_rear_imbalance_signed_pct": 0.30,
     "stint_lap_count": 12,
+    # T143 — tire-degradation-attributed pace decay. REUSES T074's
+    # `stint_pace_decay_seconds_per_lap` (when both fire, T143 is
+    # the more-specific diagnosis) and adds an attribution guard:
+    # caller supplies the fraction of decay that correlates with
+    # measured tire wear. Distinct from T074 (cause-agnostic) and
+    # T132 (driver-fade framing on lap_time alone).
+    "stint_pace_decay_seconds_per_lap": 0.25,
+    "stint_pace_decay_tire_attribution_pct": 0.85,
 }
 
 
@@ -269,4 +278,85 @@ def test_wear_imbalance_silent_when_axles_balanced() -> None:
         f"{_WEAR_IMBALANCE_RULE_ID} fired on balanced-wear driver — "
         f"coached axle-bias to a driver loading both axles evenly. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T143: tm.stint_pace_decay.tire_degradation ----------------
+
+
+def test_tire_decay_fires_on_combined_decay_and_high_tire_attribution() -> None:
+    """Both signals firing: pace decay 0.25 s/lap (well above
+    the 0.15 s/lap firing threshold — clear stint-pace decay,
+    same threshold as T074) AND 85% of the decay correlated
+    with measured tire wear (well above the 0.70 attribution
+    threshold — decay is tire-driven, not driver-driven). Pin:
+    the canonical "your stint pace falls off because the tires
+    are degrading" pattern produces an insight that's distinct
+    from T074 (cause-agnostic) and T132 (driver-fade)."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "stint_pace_decay_seconds_per_lap": 0.25,
+            "stint_pace_decay_tire_attribution_pct": 0.85,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TIRE_DECAY_RULE_ID in fired_ids, (
+        f"expected {_TIRE_DECAY_RULE_ID} to fire on combined "
+        f"high-decay + high-tire-attribution context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_tire_decay_silent_when_decay_below_threshold() -> None:
+    """High tire attribution (85%) but pace decay only 0.05
+    s/lap — the small decay that does happen is tire-driven,
+    but it's within the noise floor and not coachable. The
+    rule must NOT fire — coaching "manage your tires" to a
+    driver whose stint pace is essentially flat is noise.
+    Pin: the decay guard prevents firing on every tire-using
+    stint regardless of decay magnitude."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "stint_pace_decay_seconds_per_lap": 0.05,
+            "stint_pace_decay_tire_attribution_pct": 0.85,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TIRE_DECAY_RULE_ID not in fired_ids, (
+        f"{_TIRE_DECAY_RULE_ID} fired on flat-pace stint — "
+        f"coached tire management to a driver whose pace isn't "
+        f"falling off. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_tire_decay_silent_when_decay_not_tire_attributable() -> None:
+    """Clear pace decay (0.25 s/lap) but only 30% of it
+    correlates with tire wear — the decay is mostly driver-
+    fade or fuel-load (T132 territory), not tire degradation.
+    The rule must NOT fire — coaching "your tires are
+    degrading" when the decay is actually driver concentration
+    drift would mis-prescribe the drill (T132's focus drill,
+    not a tire-management drill). Pin: the attribution guard
+    enforces T143's specific tire-degradation framing,
+    distinct from T074's cause-agnostic decay diagnosis."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "stint_pace_decay_seconds_per_lap": 0.25,
+            "stint_pace_decay_tire_attribution_pct": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TIRE_DECAY_RULE_ID not in fired_ids, (
+        f"{_TIRE_DECAY_RULE_ID} fired on driver-fade-attributed "
+        f"decay — mis-prescribed tire-management drill for what "
+        f"is a focus-discipline issue. Fired: {sorted(fired_ids)}"
     )

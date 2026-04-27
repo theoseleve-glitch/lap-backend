@@ -1,0 +1,37 @@
+id: "tm.stint_pace_decay.tire_degradation"
+version: 1
+category: strategy
+subcategory: stint_pace_decay
+difficulty: intermediate
+
+detection:
+  signal: stint_pace_decay_seconds_per_lap
+  condition: "stint_pace_decay_seconds_per_lap >= 0.15 and stint_pace_decay_tire_attribution_pct >= 0.70"
+  context:
+    must_have_channels: ["lap_time", "lap_number", "stint_index", "tire_wear"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.15 = low, 0.30 = medium, 0.50 = high"
+
+explanation_template:
+  beginner: "Your stint times got slower by {{stint_pace_decay_seconds_per_lap}}s per lap, and {{stint_pace_decay_tire_attribution_pct}} of that decay tracks your tire wear measurements. The tires are giving up. Drive a slightly easier line through the high-load corners (one notch off the apex curb, one click less mid-corner steering) and recover the time later in the stint when the tires would be falling off harder anyway. You're trading lap-2 to lap-15 to gain lap-3 to lap-25."
+  intermediate: "Tire-attributed pace decay {{stint_pace_decay_seconds_per_lap}}s/lap, attribution {{stint_pace_decay_tire_attribution_pct}}. The actionable diagnosis (vs T074 which fires on any decay regardless of cause): the tires are the bottleneck, not your concentration. Reduce thermal load on the high-degradation axle (front-graining circuits = lighten the front; rear-overheating circuits = lighten the rear). T142 (`tm.tire_wear.unbalanced_front_rear`) often fires alongside and tells you which axle to lighten."
+  advanced: "Decay {{stint_pace_decay_seconds_per_lap}}s/lap, tire-attribution {{stint_pace_decay_tire_attribution_pct}}. Specific-diagnosis pattern: T143 = causally-attributed subset of T074's broader pace-decay signal. When both fire, T143 is the actionable diagnosis (T074's slope improves automatically once the tire load is reduced). When only T074 fires (decay is real, attribution is low), the cause is elsewhere — driver fade (T132), fuel-weight effect, or pace-pressure from traffic — and the tire-management drill is the wrong prescription. Prescription queue priority: T143 > T074 when both present."
+
+prescription:
+  drill_template_id: "drill.tire_load_management_per_stint"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "stint_pace_decay_seconds_per_lap"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["tire-load management transfers — the discipline is the same skill on either platform. Sim tire models that track wear-vs-pace correlation directly (iRacing, ACC, Le Mans Ultimate) make this rule reliable; titles with simpler thermal/wear models may produce noisier attribution measurements. Real-car tire degradation also responds to track evolution and rubbering-in across the session, which can inflate or deflate the attribution signal independently of driver behavior; threshold may need a small relaxation (e.g., 0.60 attribution) for real-car cohorts in mixed-conditions sessions."]
