@@ -45,6 +45,7 @@ _T1_VOLATILE_RULE_ID = "co.sector_consistency.t1_volatile"
 _BRAKE_DRIFT_RULE_ID = "co.braking_point_drift.over_run"
 _PASS_ABORT_RULE_ID = "rc.passing_attempts.abort_rate"
 _DEFENSIVE_LINE_RULE_ID = "rc.defensive_line.too_often"
+_BLUE_FLAG_RULE_ID = "rc.blue_flag_compliance.slow_lift"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -83,6 +84,11 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # is the combination.
     "defensive_line_lap_share": 0.55,
     "lap_time_loss_per_defensive_lap_seconds": 0.45,
+    # T137 — blue-flag compliance signals. Racecraft etiquette
+    # rule: faster car shown blue, driver should lift promptly.
+    # Slow average response across multiple events = pattern.
+    "blue_flag_event_count": 5,
+    "blue_flag_avg_lift_response_seconds": 4.5,
 }
 
 
@@ -594,5 +600,81 @@ def test_defensive_line_silent_when_defenses_are_rare() -> None:
     assert _DEFENSIVE_LINE_RULE_ID not in fired_ids, (
         f"{_DEFENSIVE_LINE_RULE_ID} fired on rare-defending "
         f"driver — coached against occasional necessary defending. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T137: rc.blue_flag_compliance.slow_lift -------------------
+
+
+def test_blue_flag_fires_on_combined_slow_response_and_enough_events() -> None:
+    """Both signals firing: avg lift response 4.5s after blue
+    flag (well above the 3.0s firing threshold — slow compliance)
+    AND 5 blue-flag events in the session (well past the 3-event
+    minimum sample size). Pin: the canonical "you don't yield
+    promptly to faster cars" pattern produces an insight — this
+    is racecraft etiquette, distinct from pace deficits."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "blue_flag_event_count": 5,
+            "blue_flag_avg_lift_response_seconds": 4.5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _BLUE_FLAG_RULE_ID in fired_ids, (
+        f"expected {_BLUE_FLAG_RULE_ID} to fire on combined "
+        f"slow-response + enough-events context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_blue_flag_silent_when_event_count_too_low() -> None:
+    """Slow response (4.5s) but only 2 blue-flag events. A 1- or
+    2-event sample where each is the worst case (a corner mid-
+    way through the lap, no safe lift point until the next
+    straight) inflates the average. The rule must NOT fire —
+    sample size guard prevents racecraft-etiquette diagnosis
+    from situational noise. Pin: the >=3 event minimum keeps
+    the average response statistically meaningful."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "blue_flag_event_count": 2,
+            "blue_flag_avg_lift_response_seconds": 4.5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _BLUE_FLAG_RULE_ID not in fired_ids, (
+        f"{_BLUE_FLAG_RULE_ID} fired on 2-event sample — coached "
+        f"blue-flag etiquette from a sample size where average "
+        f"is noise. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_blue_flag_silent_when_response_is_prompt() -> None:
+    """Plenty of events (5) but avg response only 1.2s — the
+    driver is yielding promptly. The rule must NOT fire —
+    coaching "you ignore blue flags" to a courteous driver is
+    noise. Pin: the response-time guard prevents firing on
+    every multi-class racer who happens to see blue flags. The
+    rule targets non-compliance, not blue-flag frequency."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "blue_flag_event_count": 5,
+            "blue_flag_avg_lift_response_seconds": 1.2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _BLUE_FLAG_RULE_ID not in fired_ids, (
+        f"{_BLUE_FLAG_RULE_ID} fired on prompt-yielding driver — "
+        f"coached non-compliance to a courteous driver. "
         f"Fired: {sorted(fired_ids)}"
     )

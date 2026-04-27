@@ -310,6 +310,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # path independently.)
     "defensive_line_lap_share": 0.20,
     "lap_time_loss_per_defensive_lap_seconds": 0.10,
+    # T137 blue-flag signals at courteous-yielder values so
+    # `rc.blue_flag_compliance.slow_lift` stays silent. (Avg
+    # response 1.0s is well below the >=3.0s firing threshold
+    # and is the load-bearing silencer; event count 5 satisfies
+    # the >=3 sample-size guard.)
+    "blue_flag_event_count": 5,
+    "blue_flag_avg_lift_response_seconds": 1.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -472,6 +479,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # (0.20, well below the >=0.40 firing threshold).
     "defensive_line_lap_share": 0.20,
     "lap_time_loss_per_defensive_lap_seconds": 0.10,
+    # T137 blue-flag signals at courteous-yielder values so
+    # `rc.blue_flag_compliance.slow_lift` stays silent. Same
+    # shape as the firing fixture; load-bearing silencer is the
+    # avg response (1.0s, well below the >=3.0s firing threshold).
+    "blue_flag_event_count": 5,
+    "blue_flag_avg_lift_response_seconds": 1.0,
 }
 
 
