@@ -1,0 +1,37 @@
+id: "th.staircase_pattern.uneven_modulation"
+version: 1
+category: technique
+subcategory: staircase_pattern
+difficulty: beginner
+
+detection:
+  signal: throttle_step_count_in_pickup
+  condition: "throttle_step_count_in_pickup >= 3 and throttle_pickup_smoothness_index <= 0.50"
+  context:
+    must_have_channels: ["throttle"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, smoothness 0.50 = low, 0.35 = medium, 0.20 = high"
+
+explanation_template:
+  beginner: "On {{corner}} your throttle pickup looked like stairs — {{throttle_step_count_in_pickup}} distinct plateaus, smoothness {{throttle_pickup_smoothness_index}}. Punch-and-hold-and-punch costs grip every time the load shifts. Roll the pedal in like a dial, not a switch with a delay between clicks."
+  intermediate: "Stepped throttle pickup on {{corner}} — {{throttle_step_count_in_pickup}} plateaus, smoothness index {{throttle_pickup_smoothness_index}}. Each plateau-to-plateau jump is a mini load-transfer event the chassis has to absorb; smooth out the transitions to keep the rear loaded continuously."
+  advanced: "Staircase pickup on {{corner}}: steps={{throttle_step_count_in_pickup}}, smoothness={{throttle_pickup_smoothness_index}}. Stepped pedal application excites suspension at each transition, costing ~50-100ms of grip per step; map a continuous ramp curve (target smoothness ≥0.70) keyed to steering-unwind rate."
+
+prescription:
+  drill_template_id: "drill.continuous_throttle_ramp"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "throttle_pickup_smoothness_index"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim pedals lack the haptic feedback that helps real-world drivers find continuous ramps; staircase patterns tend to be MORE common in sim and a smooth-pedal habit built in real often degrades when transferred back to sim"]

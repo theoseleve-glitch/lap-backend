@@ -42,6 +42,7 @@ _LATE_RULE_ID = "th.late_throttle.exit_speed_loss"
 _ABRUPT_RULE_ID = "th.abrupt_pickup.traction_break"
 _PARTIAL_RULE_ID = "th.partial_throttle.mid_corner"
 _LIFT_RULE_ID = "th.throttle_lift.mid_corner"
+_STAIRCASE_RULE_ID = "th.staircase_pattern.uneven_modulation"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -65,6 +66,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T115 — involuntary mid-corner lift signals.
     "mid_corner_lift_event_count": 2,
     "lift_throttle_drop_pct": 0.35,
+    # T116 — staircase / uneven-modulation signals.
+    "throttle_step_count_in_pickup": 4,
+    "throttle_pickup_smoothness_index": 0.30,
 }
 
 
@@ -481,5 +485,82 @@ def test_throttle_lift_silent_when_drop_too_small() -> None:
     assert _LIFT_RULE_ID not in fired_ids, (
         f"{_LIFT_RULE_ID} fired on events-but-small-drop context "
         f"— flagged a feathering driver as panic-lifting. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T116: th.staircase_pattern.uneven_modulation --------------
+
+
+def test_staircase_fires_on_combined_steps_and_choppy_pickup() -> None:
+    """Both signals firing: 4 distinct plateaus detected during
+    throttle pickup AND a smoothness index of 0.30 (well below
+    the 0.50 ceiling for "smooth"). Pin: the canonical "punch +
+    hold + punch + hold" stepped technique produces an insight
+    instead of being missed because each individual step is
+    "small enough" to not trigger the abrupt-pickup rule."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_step_count_in_pickup": 4,
+            "throttle_pickup_smoothness_index": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _STAIRCASE_RULE_ID in fired_ids, (
+        f"expected {_STAIRCASE_RULE_ID} to fire on combined "
+        f"step-count + low-smoothness context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_staircase_silent_when_step_count_low() -> None:
+    """Only 2 plateaus during pickup (a deliberate two-stage
+    pickup — e.g. partial commit before full commit on a
+    tightening corner) but smoothness reads 0.30 (low). The
+    rule must NOT fire — two stages can be intentional, and
+    the low smoothness alone could be sensor jitter on the
+    pedal trace. Pin: the conjunction prevents flagging
+    deliberate two-stage technique."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_step_count_in_pickup": 2,
+            "throttle_pickup_smoothness_index": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _STAIRCASE_RULE_ID not in fired_ids, (
+        f"{_STAIRCASE_RULE_ID} fired on low-step / low-smoothness "
+        f"context — flagged a deliberate two-stage commit. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_staircase_silent_when_smoothness_high() -> None:
+    """4 plateaus detected (could be a noisy plateau detector
+    on a curved-but-continuous pickup) but smoothness index
+    reads 0.80 (the trace is smooth — the "plateaus" are just
+    inflection points on a curve). The rule must NOT fire —
+    smoothness is the ground truth; step count is a heuristic
+    that needs corroboration. Pin: the conjunction protects
+    against false-positive plateau detections on smooth ramps."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_step_count_in_pickup": 4,
+            "throttle_pickup_smoothness_index": 0.80,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _STAIRCASE_RULE_ID not in fired_ids, (
+        f"{_STAIRCASE_RULE_ID} fired on high-step / smooth "
+        f"context — flagged a smooth ramp as stepped. "
         f"Fired: {sorted(fired_ids)}"
     )

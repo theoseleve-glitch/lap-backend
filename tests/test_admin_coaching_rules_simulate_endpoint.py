@@ -196,6 +196,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `th.throttle_lift.mid_corner` stays silent.
     "mid_corner_lift_event_count": 0,
     "lift_throttle_drop_pct": 0.05,
+    # T116 staircase-pickup signals at smooth-ramp values so
+    # `th.staircase_pattern.uneven_modulation` stays silent.
+    "throttle_step_count_in_pickup": 1,
+    "throttle_pickup_smoothness_index": 0.85,
 }
 
 # A context where every braking rule should be silent — values
@@ -250,6 +254,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # `th.throttle_lift.mid_corner` stays silent.
     "mid_corner_lift_event_count": 0,
     "lift_throttle_drop_pct": 0.05,
+    # T116 staircase-pickup signals at smooth-ramp values so
+    # `th.staircase_pattern.uneven_modulation` stays silent.
+    "throttle_step_count_in_pickup": 1,
+    "throttle_pickup_smoothness_index": 0.85,
 }
 
 
