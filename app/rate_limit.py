@@ -37,6 +37,16 @@ F = TypeVar("F", bound=Callable[..., object])
 AUTH_PATH_PREFIX = "/api/v1/auth/"
 INGEST_PATH = "/api/v1/sessions/ingest"
 API_V1_PREFIX = "/api/v1/"
+# T199 — docs / spec endpoints are public reference material. They
+# share the /api/v1/ prefix with the rate-limited routes but must
+# be exempt: the Swagger UI fetches `openapi.json` on every page
+# reload, and a developer iterating quickly would burn the read
+# bucket and start seeing 429s on the docs themselves. Exempting
+# them by exact path keeps the matcher cheap (one `in` check per
+# request, no startswith fan-out).
+DOCS_EXEMPT_PATHS = frozenset(
+    {"/api/v1/docs", "/api/v1/redoc", "/api/v1/openapi.json"}
+)
 
 _auth_limiter: RateLimiter | None = None
 _read_limiter: RateLimiter | None = None
@@ -121,12 +131,15 @@ def _resolve_tier(
     when no tier applies — the middleware short-circuits.
 
     Tier selection (most-specific to least):
+      docs paths  → no limiter (T199 — public reference material)
       auth path   → auth tier (per-IP)
       ingest path → ingest tier (per-user)
       /api/v1/*   → write tier if method mutates, else read tier
-      anything else (health, metrics, /docs) → no limiter
+      anything else (health, metrics) → no limiter
     """
     path = request.url.path
+    if path in DOCS_EXEMPT_PATHS:
+        return None, ""
     if path.startswith(AUTH_PATH_PREFIX):
         if _auth_limiter is None:
             return None, ""
