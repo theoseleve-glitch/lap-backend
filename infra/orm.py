@@ -1094,3 +1094,45 @@ class OrganizationInvitation(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class CoachSessionNote(Base):
+    """T173 — free-text coach annotation on a driver's session.
+
+    Authoring identity is the user who POSTed the note (recorded
+    here, not in the session manifest). Cascade on session_id:
+    deleting a session purges its notes. No FK constraint on
+    author_user_id deletion — note history is preserved (NOT
+    NULL because every note has a real author at write-time;
+    if the user is later deleted, the row stays and the FK keeps
+    pointing at the old id, which is then a dead reference. Use
+    ON DELETE SET NULL to handle that case rather than CASCADE).
+
+    No FK to Organization: a driver may be in multiple orgs, and
+    the note's relevant context is the coach<->driver pairing
+    enforced at the endpoint layer. Storing org_id here would
+    over-constrain the model and complicate the authoring story
+    when a driver is in two orgs and a coach in only one of
+    them.
+    """
+
+    __tablename__ = "coach_session_notes"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid6.uuid7
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    author_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
