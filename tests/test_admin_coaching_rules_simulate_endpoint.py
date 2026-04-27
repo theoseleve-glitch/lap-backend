@@ -464,6 +464,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # silencer.)
     "sessions_since_car_change": 12,
     "pace_transfer_gap_pct_above_baseline": 0.005,
+    # T158 quali-vs-race signals at clean-transfer / short-sample
+    # values so `ad.qualifying_vs_race.pace_delta` stays silent.
+    # (Drop 0.05 is well below the >=0.20 firing threshold and
+    # is the load-bearing silencer; race-lap count 4 is also
+    # below the >=5 sample-size guard for defense in depth.)
+    "qualifying_to_race_percentile_drop": 0.05,
+    "clean_lap_count_in_race_session": 4,
 }
 
 # A context where every braking rule should be silent — values
@@ -746,6 +753,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # shape as firing fixture; both signals quiet independently.
     "sessions_since_car_change": 12,
     "pace_transfer_gap_pct_above_baseline": 0.005,
+    # T158 quali-vs-race signals at clean-transfer / short-sample
+    # values so `ad.qualifying_vs_race.pace_delta` stays silent.
+    # Same shape as firing fixture; both signals quiet
+    # independently.
+    "qualifying_to_race_percentile_drop": 0.05,
+    "clean_lap_count_in_race_session": 4,
 }
 
 

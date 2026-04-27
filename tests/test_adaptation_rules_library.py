@@ -51,6 +51,7 @@ _RAIN_ONSET_RULE_ID = "ad.rain_start.tire_commitment_late"
 _TRAFFIC_DEFENSE_RULE_ID = "ad.traffic_loss.defensive_excess"
 _NEW_TRACK_RULE_ID = "ad.new_track.learning_rate_slow"
 _CAR_CHANGE_RULE_ID = "ad.car_change.transfer_gap"
+_QUALI_RACE_DELTA_RULE_ID = "ad.qualifying_vs_race.pace_delta"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -134,6 +135,16 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # track familiarity.
     "sessions_since_car_change": 1,
     "pace_transfer_gap_pct_above_baseline": 0.04,
+    # T158 — qualifying vs race percentile drop. Caller supplies
+    # the magnitude of the driver's cohort-percentile drop from
+    # qualifying to race (>=0.20 means a 20-percentile drop, e.g.,
+    # quali P10 / race P30 in a 50-car field) and the count of
+    # clean race-session laps establishing the race-pace baseline.
+    # Distinct from T156 (track-learning) and T157 (car-transfer)
+    # by attributing specifically to the quali-aggression-vs-race-
+    # commitment transfer failure mode.
+    "qualifying_to_race_percentile_drop": 0.35,
+    "clean_lap_count_in_race_session": 12,
 }
 
 
@@ -783,4 +794,87 @@ def test_car_change_silent_when_pace_transferred_cleanly() -> None:
         f"{_CAR_CHANGE_RULE_ID} fired on clean-transfer driver — "
         f"coached transfer-protocol to a driver who already "
         f"transferred pace cleanly. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T158: ad.qualifying_vs_race.pace_delta --------------------
+
+
+def test_quali_race_delta_fires_on_combined_drop_and_enough_laps() -> None:
+    """Both signals firing: 35-percentile drop from qualifying to
+    race in cohort ranking (well above the 0.20 firing threshold —
+    significant transfer failure, e.g., quali P10 → race P40+ in
+    a 50-car field) AND 12 clean race laps (well past the 5-lap
+    minimum sample size needed for race-pace baseline). Pin: the
+    canonical "you can find one quick lap but can't sustain race
+    pace" pattern produces an insight, distinct from T156 / T157
+    by attributing specifically to quali-aggression-to-race-
+    commitment transfer failure."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "qualifying_to_race_percentile_drop": 0.35,
+            "clean_lap_count_in_race_session": 12,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _QUALI_RACE_DELTA_RULE_ID in fired_ids, (
+        f"expected {_QUALI_RACE_DELTA_RULE_ID} to fire on combined "
+        f"high-drop + enough-laps context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_quali_race_delta_silent_when_lap_count_too_low() -> None:
+    """Big percentile drop (35%) but only 2 clean race laps —
+    race-pace estimate is dominated by single-lap noise (one
+    SC restart, one DRS-train lap, one error). The rule must
+    NOT fire — sample size guard prevents diagnosing transfer
+    failure from a noise-dominated race-pace estimate. Pin: the
+    >=5 lap minimum keeps the race-pace baseline statistically
+    meaningful for the percentile comparison."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "qualifying_to_race_percentile_drop": 0.35,
+            "clean_lap_count_in_race_session": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _QUALI_RACE_DELTA_RULE_ID not in fired_ids, (
+        f"{_QUALI_RACE_DELTA_RULE_ID} fired on 2-lap sample — "
+        f"coached quali-to-race transfer from a sample size where "
+        f"race pace is noise. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_quali_race_delta_silent_when_pace_transfers_cleanly() -> None:
+    """12 clean race laps but percentile drop only 5% — the
+    driver's race-pace ranking is essentially the same as their
+    qualifying-pace ranking (e.g., quali P10 / race P11 in a
+    50-car field). The rule must NOT fire — coaching "transfer
+    quali aggression to race pace" to a driver who already
+    transfers cleanly would over-state the issue. Pin: the drop-
+    magnitude guard prevents firing on every multi-session
+    weekend regardless of cross-format transfer quality. The
+    rule targets the specific quali-strong / race-weak failure
+    mode, not generic race performance."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "qualifying_to_race_percentile_drop": 0.05,
+            "clean_lap_count_in_race_session": 12,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _QUALI_RACE_DELTA_RULE_ID not in fired_ids, (
+        f"{_QUALI_RACE_DELTA_RULE_ID} fired on clean-transfer "
+        f"driver — coached quali-to-race transfer to a driver "
+        f"already transferring cleanly. Fired: {sorted(fired_ids)}"
     )
