@@ -51,9 +51,22 @@ app = FastAPI(
     redoc_url="/api/v1/redoc",
 )
 
+# T184 — allowed-origin list is env-overridable so staging /
+# canary deploys don't need a code edit. Default is the single
+# prod origin: an unset / empty env var must NOT widen to "*"
+# nor collapse to "[]" (which would lock out all browsers).
+_DEFAULT_CORS_ALLOWED_ORIGINS = ("https://app.lap-coach.racing",)
+
+
+def _parse_cors_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    parsed = [item.strip() for item in raw.split(",") if item.strip()]
+    return parsed or list(_DEFAULT_CORS_ALLOWED_ORIGINS)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://app.lap-coach.racing"],
+    allow_origins=_parse_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
