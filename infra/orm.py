@@ -996,3 +996,50 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class OrganizationMember(Base):
+    """T162 — join table between Organization (T161) and User
+    with role information. A user can hold one role per org;
+    re-roling goes through the role-update path (T164/T165),
+    not via duplicate inserts.
+
+    `role` is String(32) — the {admin, coach, driver} enum is
+    enforced upstream at the endpoint layer, not via DB CHECK,
+    consistent with the codebase convention for role/status
+    columns (e.g., User.subscription_status).
+
+    Cascades:
+      - org_id ON DELETE CASCADE — deleting an org cleans up
+        its membership rows; orphaned members would leak into
+        team-membership queries.
+      - user_id ON DELETE CASCADE — GDPR right-to-erasure on a
+        user purges their org memberships with them.
+    """
+
+    __tablename__ = "organization_members"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid6.uuid7
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "user_id",
+            name="uq_organization_members_org_id_user_id",
+        ),
+    )
