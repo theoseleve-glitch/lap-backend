@@ -42,6 +42,7 @@ _LATE_APEX_RULE_ID = "cs.min_speed.too_low_late_apex"
 _WIDE_LINE_RULE_ID = "cs.min_speed.too_high_wide_line"
 _EARLY_TURN_RULE_ID = "cs.apex_miss.early_turn"
 _LATE_TURN_RULE_ID = "cs.apex_miss.late_turn"
+_LINE_VARIANCE_RULE_ID = "cs.line_variance.inconsistent_apex"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -60,6 +61,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T124 — late-turn / late-apex signal (apex_position
     # at 0.70 above already firing-side for late apex).
     "turn_in_distance_m_after_optimal": 8.0,
+    # T125 — line-variance / inconsistent-apex signals.
+    "apex_position_lap_stddev_pct": 0.15,
+    "consecutive_clean_laps_compared": 5,
 }
 
 
@@ -402,5 +406,80 @@ def test_late_turn_silent_when_apex_on_time() -> None:
     assert _LATE_TURN_RULE_ID not in fired_ids, (
         f"{_LATE_TURN_RULE_ID} fired on late-turn / on-time-"
         f"apex context — flagged a recovered turn-in. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T125: cs.line_variance.inconsistent_apex ------------------
+
+
+def test_line_variance_fires_on_combined_high_stddev_and_sample() -> None:
+    """Both signals firing: apex-position stddev 0.15 across
+    5 clean laps (well above the 0.10 inconsistency floor with
+    sample size above the 3-lap minimum). Pin: the canonical
+    "different apex every lap" pattern produces an insight
+    rather than being missed because individual laps "looked
+    fine"."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "apex_position_lap_stddev_pct": 0.15,
+            "consecutive_clean_laps_compared": 5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LINE_VARIANCE_RULE_ID in fired_ids, (
+        f"expected {_LINE_VARIANCE_RULE_ID} to fire on combined "
+        f"high-stddev + sufficient-sample context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_line_variance_silent_when_sample_too_small() -> None:
+    """High stddev (0.15) but only 2 clean laps compared. The
+    rule must NOT fire — 2-lap stddev is statistical noise,
+    not a behavioral pattern. Coaching here would generate
+    confident-sounding insights from insufficient evidence.
+    Pin: the conjunction enforces a minimum sample-size before
+    making a consistency claim."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "apex_position_lap_stddev_pct": 0.15,
+            "consecutive_clean_laps_compared": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LINE_VARIANCE_RULE_ID not in fired_ids, (
+        f"{_LINE_VARIANCE_RULE_ID} fired on 2-lap-sample "
+        f"context — confident claim from insufficient evidence. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_line_variance_silent_when_apex_consistent() -> None:
+    """5 clean laps compared with apex-position stddev 0.04
+    (well below the 0.10 floor — driver IS consistent in
+    apex placement). The rule must NOT fire — coaching
+    consistency to a consistent driver is noise. Pin:
+    baseline no-fire to prove the rule isn't fires-always
+    once you have enough samples."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "apex_position_lap_stddev_pct": 0.04,
+            "consecutive_clean_laps_compared": 5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LINE_VARIANCE_RULE_ID not in fired_ids, (
+        f"{_LINE_VARIANCE_RULE_ID} fired on consistent-apex "
+        f"context — coached consistency to a consistent driver. "
         f"Fired: {sorted(fired_ids)}"
     )

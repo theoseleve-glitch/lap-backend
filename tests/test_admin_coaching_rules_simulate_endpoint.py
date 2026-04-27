@@ -237,6 +237,12 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # 0.50 from T121 above is also quiet for T124 which
     # fires >=0.60.)
     "turn_in_distance_m_after_optimal": 0.0,
+    # T125 apex line-variance signal at consistent value so
+    # `cs.line_variance.inconsistent_apex` stays silent.
+    # (consecutive_clean_laps_compared shared with T119 — set
+    # to 5 above, satisfies the rule's >=3 sample-size guard,
+    # so the variance signal is the load-bearing silencer.)
+    "apex_position_lap_stddev_pct": 0.04,
 }
 
 # A context where every braking rule should be silent — values
@@ -332,6 +338,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # 0.50 from T121 above is also quiet for T124 which
     # fires >=0.60.)
     "turn_in_distance_m_after_optimal": 0.0,
+    # T125 apex line-variance signal at consistent value so
+    # `cs.line_variance.inconsistent_apex` stays silent.
+    # (consecutive_clean_laps_compared shared with T119 — set
+    # to 5 above, satisfies the rule's >=3 sample-size guard,
+    # so the variance signal is the load-bearing silencer.)
+    "apex_position_lap_stddev_pct": 0.04,
 }
 
 

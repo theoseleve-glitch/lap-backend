@@ -1,0 +1,37 @@
+id: "cs.line_variance.inconsistent_apex"
+version: 1
+category: technique
+subcategory: line_variance
+difficulty: beginner
+
+detection:
+  signal: apex_position_lap_stddev_pct
+  condition: "apex_position_lap_stddev_pct >= 0.10 and consecutive_clean_laps_compared >= 3"
+  context:
+    must_have_channels: ["steering", "speed"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.10 = low, 0.15 = medium, 0.25 = high"
+
+explanation_template:
+  beginner: "Across {{consecutive_clean_laps_compared}} clean laps your apex point at {{corner}} varied a lot (stddev {{apex_position_lap_stddev_pct}} of corner length). You're picking a different apex every lap — that's why the corner feels different each time. Find one apex reference and copy it lap after lap."
+  intermediate: "Apex-line drift across {{consecutive_clean_laps_compared}} clean laps on {{corner}} — stddev {{apex_position_lap_stddev_pct}}. High line variance prevents convergence on the fastest line; lock in a reference lap and minimize departure before chasing further gains. Until variance is in band, single-corner deltas are unreliable."
+  advanced: "Cross-lap apex stddev {{apex_position_lap_stddev_pct}} over {{consecutive_clean_laps_compared}} clean laps on {{corner}}. Above 0.10 the noise floor masks line-vs-line deltas; consistency drills (target ≤0.06) recover signal. Same diagnostic discipline as T119 (throttle variance) — fix the dispersion before scoring per-lap technique."
+
+prescription:
+  drill_template_id: "drill.apex_repeatability_anchor"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "apex_position_lap_stddev_pct"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["apex repeatability transfers — it's a discipline, not a platform skill. Real-car drivers may show slightly higher variance due to grip drift across a session; the threshold may need a small relaxation when transferring sim habits to real."]
