@@ -1,0 +1,37 @@
+id: "co.lap_time_variance.high_spread"
+version: 1
+category: technique
+subcategory: lap_time_variance
+difficulty: beginner
+
+detection:
+  signal: lap_time_stddev_seconds_in_session
+  condition: "lap_time_stddev_seconds_in_session >= 0.50 and clean_lap_count_in_session >= 3"
+  context:
+    must_have_channels: ["lap_time"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.50 = low, 0.80 = medium, 1.20 = high"
+
+explanation_template:
+  beginner: "Across {{clean_lap_count_in_session}} clean laps your lap times spread by {{lap_time_stddev_seconds_in_session}}s (stddev). You can drive fast — you can't drive the same lap twice yet. The gap between your best and average is the easiest time on the table. Pick one reference lap and copy it; chase repeatability before chasing the next tenth."
+  intermediate: "Session-level lap-time spread {{lap_time_stddev_seconds_in_session}}s across {{clean_lap_count_in_session}} clean laps. High spread masks every per-corner delta — until the noise floor drops, you can't tell whether a setup change or technique tweak helped or hurt. Lock in a reference lap, minimize departure, then resume per-corner work."
+  advanced: "Within-session lap-time stddev {{lap_time_stddev_seconds_in_session}}s over n={{clean_lap_count_in_session}} clean laps. Above 0.50s the per-corner signal is buried under driver noise; same diagnostic discipline as T119 (throttle variance) and T125 (apex variance) — fix dispersion before scoring tactical changes. Target ≤0.30s for meaningful corner-level deltas."
+
+prescription:
+  drill_template_id: "drill.lap_repeatability_anchor"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "lap_time_stddev_seconds_in_session"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["lap-time repeatability transfers — it's a discipline, not a platform skill. Real-car drivers may show slightly higher session spread due to tire drop-off and grip drift across a stint; the threshold may need a small relaxation (e.g., 0.65s) when transferring sim habits to longer real-world stints."]

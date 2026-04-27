@@ -270,6 +270,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # cohort_member_count 50 satisfies the >=20 sample-size guard.)
     "corner_speed_cohort_percentile": 0.65,
     "cohort_member_count": 50,
+    # T131 lap-time spread signals at consistent-driver values so
+    # `co.lap_time_variance.high_spread` stays silent. (Stddev
+    # 0.20s is well below the >=0.50s firing threshold and is
+    # the load-bearing silencer; lap count 8 satisfies the >=3
+    # sample-size guard.)
+    "lap_time_stddev_seconds_in_session": 0.20,
+    "clean_lap_count_in_session": 8,
 }
 
 # A context where every braking rule should be silent — values
@@ -398,6 +405,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # firing threshold).
     "corner_speed_cohort_percentile": 0.65,
     "cohort_member_count": 50,
+    # T131 lap-time spread signals at consistent-driver values so
+    # `co.lap_time_variance.high_spread` stays silent. Same shape
+    # as the firing fixture above; the load-bearing silencer is
+    # the stddev (0.20s, well below the >=0.50s firing threshold).
+    "lap_time_stddev_seconds_in_session": 0.20,
+    "clean_lap_count_in_session": 8,
 }
 
 
