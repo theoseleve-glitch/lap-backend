@@ -409,6 +409,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `clean_lap_count_in_session: 5` from T131 above already
     # satisfies T150's >=5 sample-size guard.)
     "warm_up_lap_time_pct_above_session_best": 0.06,
+    # T151 grip-adaptation signals at stable/fast values so
+    # `ad.grip_change.slow_to_adapt` stays silent. (Both signals
+    # quiet — magnitude 0.02 is well below the >=0.08 firing
+    # threshold; recalibration delay of 1 lap is well below the
+    # >=4 firing threshold; either alone is load-bearing
+    # silencer.)
+    "grip_level_change_magnitude_pct": 0.02,
+    "laps_to_input_recalibration": 1,
 }
 
 # A context where every braking rule should be silent — values
@@ -653,6 +661,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # as firing fixture; load-bearing silencer is the pct
     # (0.06, well above the <=0.02 firing threshold).
     "warm_up_lap_time_pct_above_session_best": 0.06,
+    # T151 grip-adaptation signals at stable/fast values so
+    # `ad.grip_change.slow_to_adapt` stays silent. Same shape
+    # as firing fixture; both signals quiet independently.
+    "grip_level_change_magnitude_pct": 0.02,
+    "laps_to_input_recalibration": 1,
 }
 
 

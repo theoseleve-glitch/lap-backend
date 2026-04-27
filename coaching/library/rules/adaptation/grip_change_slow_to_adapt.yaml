@@ -1,0 +1,37 @@
+id: "ad.grip_change.slow_to_adapt"
+version: 1
+category: strategy
+subcategory: grip_adaptation
+difficulty: beginner
+
+detection:
+  signal: laps_to_input_recalibration
+  condition: "grip_level_change_magnitude_pct >= 0.08 and laps_to_input_recalibration >= 4"
+  context:
+    must_have_channels: ["lap_time", "brake_pressure", "throttle", "track_temp"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 4 = low, 6 = medium, 10 = high"
+
+explanation_template:
+  beginner: "The track grip changed by {{grip_level_change_magnitude_pct}} (rubber going down, drying after rain, or tires degrading) but you took {{laps_to_input_recalibration}} laps before your brake markers, throttle pickup, and lines actually shifted to match. Every lap of that gap is lap-time on the table — same inputs in a different grip world produce the wrong outcome. Watch for the change (sector deltas vs the field, the radio call about track state, the feel under braking), then deliberately adjust by lap 2: brake 5m later if grip is up, 5m earlier if grip is down. Don't wait for the lap-time gap to tell you — by then you've spent 4 laps reacting instead of leading."
+  intermediate: "Grip change magnitude {{grip_level_change_magnitude_pct}}, recalibration delay {{laps_to_input_recalibration}} laps. Rule pairs upstream-cause framing with two specific downstream consequences: the same slow-adaptation pattern surfaces as `ad.weather_transition.wet_line_wrong` (T153 — grip down: didn't move to wet line) or `ad.rain_start.tire_commitment_late` (T154 — grip down: didn't pull back commitment). When T151 fires alongside either, the prescription priority is T151's adaptive-recalibration drill (build the habit of explicit per-lap input check-ins after any grip-change event) — fixing the upstream pattern resolves the downstream symptoms together."
+  advanced: "Grip change pct {{grip_level_change_magnitude_pct}}, recalibration delay {{laps_to_input_recalibration}} laps. The cognitive failure mode: grip change requires re-priors on every brake reference (which marker, which release rate, which target apex speed). Drivers who default to 'same inputs, see what happens' burn 3-5 laps of feedback to update each prior independently. The disciplined alternative is explicit one-pass recalibration: after a grip-change event, dedicate one warm-up-pace lap to re-anchoring brake and throttle markers as a unit, then return to push pace. Gain compounds on long stints (10+ laps) and wet-to-dry transitions where the grip surface keeps moving — slow adapters lose 4+ tenths per lap until they catch up; fast adapters lose 1 lap of warm-up pace and regain reference inputs immediately. Diagnostic priority: T151 > {T153, T154} when the slow-adaptation pattern is the upstream cause."
+
+prescription:
+  drill_template_id: "drill.adaptive_recalibration_laps"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "laps_to_input_recalibration"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["adaptive-recalibration discipline transfers — explicit per-lap input check-ins after a grip-change event is the same skill on either platform. Sim drivers benefit from algorithmically-precise sector-delta feedback that makes grip changes visible by lap 2; real-car drivers rely more on bodily feedback (steering load, brake pedal feel, traction sensation) and may need a longer recalibration window in the first session before the calibration becomes automatic. The drill is the same; the proxies the driver uses to detect a grip change differ."]
