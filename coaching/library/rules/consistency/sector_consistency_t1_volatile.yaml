@@ -1,0 +1,37 @@
+id: "co.sector_consistency.t1_volatile"
+version: 1
+category: technique
+subcategory: sector_consistency
+difficulty: intermediate
+
+detection:
+  signal: sector_1_lap_time_stddev_seconds
+  condition: "sector_1_lap_time_stddev_seconds >= 0.15 and sector_1_stddev_share_of_total >= 0.50"
+  context:
+    must_have_channels: ["lap_time", "sector_index"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.15 = low, 0.25 = medium, 0.40 = high"
+
+explanation_template:
+  beginner: "S1 is your weak sector — your S1 times vary by {{sector_1_lap_time_stddev_seconds}}s, and that's {{sector_1_stddev_share_of_total}} of your whole lap-to-lap variance. The first sector usually has the heavy braking and turn-1 commitment; if you're inconsistent there, it bleeds into the rest of the lap. Pick one S1 reference (brake point + turn-1 entry speed) and copy it every lap."
+  intermediate: "Sector-1 localized variance: stddev {{sector_1_lap_time_stddev_seconds}}s, contributing {{sector_1_stddev_share_of_total}} of session variance. Distinct from T131 (session-wide spread) — your variance is concentrated in S1, so the drill is sector-specific, not global. Lock S1 first; expect S2/S3 stddev to follow because S1 entry rhythm sets the lap rhythm."
+  advanced: "S1 stddev {{sector_1_lap_time_stddev_seconds}}s, share-of-total {{sector_1_stddev_share_of_total}}. Concentrated-sector variance argues for a localized cause: brake-point inconsistency, turn-1 entry speed selection, or first-corner commitment hesitation. Run the S1-only repeatability drill before resuming full-lap technique work — fixing S1 typically lifts S2/S3 by 20-40% of S1's improvement (rhythm carry-over). Same diagnostic discipline as T131 but localized."
+
+prescription:
+  drill_template_id: "drill.s1_repeatability_anchor"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "sector_1_lap_time_stddev_seconds"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sector-1 inconsistency transfers — the cause (brake-point uncertainty, turn-1 commitment) is the same skill on either platform. Real-car drivers may show slightly higher S1 variance early in a session due to cold tires affecting the first heavy-braking zone; the threshold may need a small relaxation for the first 2-3 laps of a real-car run."]

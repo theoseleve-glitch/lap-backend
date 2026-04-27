@@ -283,6 +283,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # and is the load-bearing silencer; clean_lap_count 8 from
     # T131 above satisfies the >=5 sample-size guard.)
     "lap_time_trend_slope_seconds_per_lap": 0.02,
+    # T133 sector-1 localized-variance signals at non-volatile
+    # values so `co.sector_consistency.t1_volatile` stays silent.
+    # (S1 stddev 0.05s is well below the >=0.15s firing floor
+    # and is the load-bearing silencer; share 0.34 also satisfies
+    # the silent path independently.)
+    "sector_1_lap_time_stddev_seconds": 0.05,
+    "sector_1_stddev_share_of_total": 0.34,
 }
 
 # A context where every braking rule should be silent — values
@@ -422,6 +429,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # as the firing fixture; load-bearing silencer is the slope
     # (0.02s/lap, well below the >=0.10s/lap firing threshold).
     "lap_time_trend_slope_seconds_per_lap": 0.02,
+    # T133 sector-1 localized-variance signals at non-volatile
+    # values so `co.sector_consistency.t1_volatile` stays silent.
+    # Same shape as the firing fixture; load-bearing silencer is
+    # the absolute stddev (0.05s, well below the >=0.15s floor).
+    "sector_1_lap_time_stddev_seconds": 0.05,
+    "sector_1_stddev_share_of_total": 0.34,
 }
 
 

@@ -41,6 +41,7 @@ CONSISTENCY_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "consistency"
 
 _HIGH_SPREAD_RULE_ID = "co.lap_time_variance.high_spread"
 _FADE_OVER_RUN_RULE_ID = "co.lap_time_trend.fade_over_run"
+_T1_VOLATILE_RULE_ID = "co.sector_consistency.t1_volatile"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -54,6 +55,11 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # (which is strategy/tire-framing); this one is driver-fade
     # framing across a single run.
     "lap_time_trend_slope_seconds_per_lap": 0.18,
+    # T133 — sector-1 localized-variance signals. Distinct from
+    # T131 (session-wide spread) by requiring the variance to
+    # be concentrated in S1 (share guard), not session-wide.
+    "sector_1_lap_time_stddev_seconds": 0.25,
+    "sector_1_stddev_share_of_total": 0.65,
 }
 
 
@@ -252,5 +258,82 @@ def test_fade_over_run_silent_when_pace_holding() -> None:
     assert _FADE_OVER_RUN_RULE_ID not in fired_ids, (
         f"{_FADE_OVER_RUN_RULE_ID} fired on pace-holding driver — "
         f"coached fade to a driver actually holding pace. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T133: co.sector_consistency.t1_volatile -------------------
+
+
+def test_t1_volatile_fires_on_combined_high_stddev_and_concentration() -> None:
+    """Both signals firing: S1 stddev 0.25s (above the 0.15s
+    floor — S1 is meaningfully spread) AND S1 contributing 65%
+    of the total session variance (above the 0.50 share floor —
+    variance is concentrated in S1, not session-wide). Pin: the
+    canonical "S1 specifically is your weak sector" pattern
+    produces an insight, distinct from T131's session-wide
+    diagnosis."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "sector_1_lap_time_stddev_seconds": 0.25,
+            "sector_1_stddev_share_of_total": 0.65,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _T1_VOLATILE_RULE_ID in fired_ids, (
+        f"expected {_T1_VOLATILE_RULE_ID} to fire on combined "
+        f"high-S1-stddev + S1-concentrated context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_t1_volatile_silent_when_variance_is_session_wide() -> None:
+    """High S1 stddev (0.25s) but S1 share only 0.34 (variance
+    is roughly evenly distributed across S1, S2, S3). This is
+    session-wide spread — T131's domain, not T133's. The rule
+    must NOT fire — coaching "fix S1" when the driver is
+    inconsistent everywhere mis-prioritizes the drill. Pin: the
+    share guard enforces T133's localized-in-S1 framing."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "sector_1_lap_time_stddev_seconds": 0.25,
+            "sector_1_stddev_share_of_total": 0.34,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _T1_VOLATILE_RULE_ID not in fired_ids, (
+        f"{_T1_VOLATILE_RULE_ID} fired on session-wide variance — "
+        f"mis-attributed session-wide spread to S1. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_t1_volatile_silent_when_absolute_stddev_too_small() -> None:
+    """S1 contributes 65% of total variance (concentrated in S1)
+    but S1 absolute stddev only 0.05s — the absolute variance is
+    in the noise floor. A driver where S1 dominates the (tiny)
+    total variance is a non-issue. The rule must NOT fire —
+    coaching "S1 is volatile" when the absolute spread is 0.05s
+    is wasted attention. Pin: the absolute floor prevents firing
+    on driver-level noise that happens to concentrate in S1."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "sector_1_lap_time_stddev_seconds": 0.05,
+            "sector_1_stddev_share_of_total": 0.65,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _T1_VOLATILE_RULE_ID not in fired_ids, (
+        f"{_T1_VOLATILE_RULE_ID} fired on noise-floor S1 stddev — "
+        f"coached a non-issue. "
         f"Fired: {sorted(fired_ids)}"
     )
