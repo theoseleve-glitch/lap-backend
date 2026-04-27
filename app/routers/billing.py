@@ -113,6 +113,14 @@ async def create_checkout_session(
         promo_id = _resolve_waitlist_promo_id(cfg)
         if promo_id is not None:
             create_kwargs["discounts"] = [{"promotion_code": promo_id}]
+    # T179 — B2B orgs need monthly invoice PDFs emailed to a known
+    # billing address, with a full billing address collected at
+    # checkout so the PDFs satisfy VAT / sales-tax accounting.
+    # Stripe auto-emails the invoice once each charge succeeds —
+    # no extra wiring on our side.
+    if body.plan in _B2B_PLANS:
+        create_kwargs["customer_email"] = user.email
+        create_kwargs["billing_address_collection"] = "required"
 
     session = stripe.checkout.Session.create(**create_kwargs)
     return BillingCheckoutResponse(
