@@ -97,10 +97,33 @@ from infra.orm import Organization as OrganizationRow
 from infra.orm import OrganizationInvitation as OrgInvitationRow
 from infra.orm import OrganizationMember as OrganizationMemberRow
 from infra.orm import User as UserRow
+from infra.stripe import update_subscription_quantity
 
 router = APIRouter(prefix="/api/v1/orgs", tags=["organizations"])
 
 _INVITE_TTL_DAYS = 7
+
+
+async def _sync_org_seats_to_stripe(
+    db: AsyncSession, org: OrganizationRow
+) -> None:
+    """T168 — keep Stripe's subscription quantity in sync with
+    actual seat count. No-op for free-tier orgs (no sub id).
+
+    Counts members AFTER the local commit, so the seat count
+    reflects post-mutation state."""
+    if org.stripe_subscription_id is None:
+        return
+    count = (
+        await db.execute(
+            select(func.count(OrganizationMemberRow.id)).where(
+                OrganizationMemberRow.org_id == org.id
+            )
+        )
+    ).scalar_one()
+    update_subscription_quantity(
+        org.stripe_subscription_id, int(count)
+    )
 
 
 @router.post(
@@ -309,6 +332,16 @@ async def accept_organization_invitation(
     invitation.accepted_at = now
     await db.commit()
     await db.refresh(member)
+    # T168 — sync Stripe seat count after the local commit so
+    # billing follows the actual member count.
+    org = (
+        await db.execute(
+            select(OrganizationRow).where(
+                OrganizationRow.id == org_id
+            )
+        )
+    ).scalar_one()
+    await _sync_org_seats_to_stripe(db, org)
     return OrgMembershipSchema(
         id=member.id,
         org_id=member.org_id,
@@ -369,6 +402,10 @@ async def remove_organization_member(
         )
     await db.delete(member)
     await db.commit()
+    # T168 — sync Stripe seat count after the local commit so
+    # billing follows the actual member count (proration credits
+    # the freed seat).
+    await _sync_org_seats_to_stripe(db, org)
 
 
 @router.get(

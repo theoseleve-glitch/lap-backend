@@ -996,6 +996,12 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # T168 — points at the Stripe subscription billing this org's
+    # seats. NULL = free tier (no Stripe sync); set = seat count
+    # is synced to Stripe on member add / remove with proration.
+    stripe_subscription_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
 
 
 class OrganizationMember(Base):
