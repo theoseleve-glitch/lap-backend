@@ -50,6 +50,7 @@ _FUEL_BURN_EXCESS_RULE_ID = "fm.fuel_burn_excess.vs_target"
 _LIFT_COAST_RULE_ID = "fm.lift_and_coast.too_rare"
 _INEFFECTIVE_SAVING_RULE_ID = "fm.fuel_saving.ineffective_pattern"
 _PIT_WINDOW_RULE_ID = "fm.pit_window.late_entry_risk"
+_COLD_TIRE_RULE_ID = "tm.cold_tire_mistakes.first_3_laps"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -109,6 +110,13 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # `fuel_burn_excess_pct_above_target` to attribute the cause
     # to driver behavior (vs strategist miscalculation).
     "predicted_fuel_out_lap_minus_planned_pit_lap": -0.5,
+    # T149 — cold-tire mistake counter for first 3 laps. Inverse
+    # diagnostic shape to T141 (overheating from over-aggression);
+    # T149 is under-temp + over-aggression = mistakes. Caller
+    # supplies count of lockups/offs/slides in laps 1-3 and avg
+    # below-optimal temp.
+    "mistake_event_count_first_3_laps": 4,
+    "tire_temp_avg_first_3_laps_below_optimal_celsius": 15.0,
 }
 
 
@@ -819,4 +827,85 @@ def test_pit_window_silent_when_burn_on_target() -> None:
         f"{_PIT_WINDOW_RULE_ID} fired on driver matching fuel "
         f"target — mis-attributed strategist miscalculation to "
         f"driver behavior. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T149: tm.cold_tire_mistakes.first_3_laps ------------------
+
+
+def test_cold_tire_fires_on_combined_mistakes_and_cold_temps() -> None:
+    """Both signals firing: 4 mistake events in laps 1-3 (well
+    above the 3-event firing threshold — pattern not one-off)
+    AND tires 15°C below optimal in the same window (well above
+    the 10°C firing threshold — clearly cold). Pin: the
+    canonical "you're pushing through cold tires and paying for
+    it" pattern produces an insight. Inverse diagnostic shape
+    to T141 (overheat from over-aggression): T149 fires when
+    under-temp combines with over-commitment."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mistake_event_count_first_3_laps": 4,
+            "tire_temp_avg_first_3_laps_below_optimal_celsius": 15.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _COLD_TIRE_RULE_ID in fired_ids, (
+        f"expected {_COLD_TIRE_RULE_ID} to fire on combined "
+        f"high-mistakes + cold-temps context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_cold_tire_silent_when_temps_in_window() -> None:
+    """Plenty of mistakes (4) in the first 3 laps but tires only
+    3°C below optimal — temps are essentially in the window.
+    The mistakes are then attributable to driver/setup/track-
+    state issues, not cold-tire over-commitment. The rule must
+    NOT fire — coaching "warm up your tires before pushing" to
+    a driver whose tires were already at temp would mis-attribute
+    the cause. Pin: the temp guard separates cold-tire mistakes
+    from driver-skill mistakes (which other rules cover)."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mistake_event_count_first_3_laps": 4,
+            "tire_temp_avg_first_3_laps_below_optimal_celsius": 3.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _COLD_TIRE_RULE_ID not in fired_ids, (
+        f"{_COLD_TIRE_RULE_ID} fired on warm-tire mistakes — "
+        f"mis-attributed driver-skill mistakes to cold tires. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_cold_tire_silent_when_no_mistakes() -> None:
+    """Tires 15°C below optimal (clearly cold) but 0 mistake
+    events — driver is correctly building up commitment as the
+    tires come in. The rule must NOT fire — coaching "be
+    careful on cold tires" to a driver already being careful
+    would over-state the issue. Pin: the mistake-count guard
+    prevents firing on every cold-tire start regardless of
+    whether the driver actually over-committed. Cold tires +
+    careful driving = correct technique, not a problem."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mistake_event_count_first_3_laps": 0,
+            "tire_temp_avg_first_3_laps_below_optimal_celsius": 15.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _COLD_TIRE_RULE_ID not in fired_ids, (
+        f"{_COLD_TIRE_RULE_ID} fired on careful cold-tire driver — "
+        f"coached caution to a driver already being careful. "
+        f"Fired: {sorted(fired_ids)}"
     )

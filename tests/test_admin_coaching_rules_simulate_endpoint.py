@@ -396,6 +396,12 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # excess >=0.05 which is short-circuited by the 0.01 value
     # above.)
     "predicted_fuel_out_lap_minus_planned_pit_lap": 5.0,
+    # T149 cold-tire-mistake signals at warm/careful values so
+    # `tm.cold_tire_mistakes.first_3_laps` stays silent. (Both
+    # signals quiet — 0 mistakes, 3°C below optimal; either
+    # alone is load-bearing silencer.)
+    "mistake_event_count_first_3_laps": 0,
+    "tire_temp_avg_first_3_laps_below_optimal_celsius": 3.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -629,6 +635,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # as firing fixture; load-bearing silencer is the margin
     # (5.0 laps, well above the <=1.0 firing threshold).
     "predicted_fuel_out_lap_minus_planned_pit_lap": 5.0,
+    # T149 cold-tire-mistake signals at warm/careful values so
+    # `tm.cold_tire_mistakes.first_3_laps` stays silent. Same
+    # shape as firing fixture; both signals quiet
+    # independently.
+    "mistake_event_count_first_3_laps": 0,
+    "tire_temp_avg_first_3_laps_below_optimal_celsius": 3.0,
 }
 
 
