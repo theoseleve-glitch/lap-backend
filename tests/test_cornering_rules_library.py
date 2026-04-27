@@ -44,6 +44,7 @@ _EARLY_TURN_RULE_ID = "cs.apex_miss.early_turn"
 _LATE_TURN_RULE_ID = "cs.apex_miss.late_turn"
 _LINE_VARIANCE_RULE_ID = "cs.line_variance.inconsistent_apex"
 _UNDERSTEER_RULE_ID = "cs.rotation_lack.understeer_mid"
+_OVERSTEER_RULE_ID = "cs.rotation_excess.overrotation_exit"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -68,6 +69,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T126 — mid-corner understeer signals.
     "mid_corner_understeer_index": 0.55,
     "steering_correction_excess_deg": 8.0,
+    # T127 — exit overrotation / oversteer signals.
+    "exit_oversteer_index": 0.55,
+    "exit_throttle_correction_count": 2,
 }
 
 
@@ -564,4 +568,80 @@ def test_understeer_silent_when_chassis_neutral() -> None:
         f"{_UNDERSTEER_RULE_ID} fired on neutral-chassis / "
         f"correction context — mis-attributed correction to "
         f"understeer. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T127: cs.rotation_excess.overrotation_exit ----------------
+
+
+def test_oversteer_fires_on_combined_oversteer_and_correction() -> None:
+    """Both signals firing: exit oversteer index 0.55 (rear
+    is stepping out) AND 2 corrective throttle lifts on exit
+    (driver had to back off to catch the car). Pin: the
+    canonical "rear came around, had to lift" pattern produces
+    an insight rather than firing on every drift technique."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "exit_oversteer_index": 0.55,
+            "exit_throttle_correction_count": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _OVERSTEER_RULE_ID in fired_ids, (
+        f"expected {_OVERSTEER_RULE_ID} to fire on combined "
+        f"oversteer + correction context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_oversteer_silent_when_no_throttle_correction() -> None:
+    """Exit oversteer index 0.55 (rear is loose) but zero
+    corrective lifts (driver is comfortable with the slip
+    angle — deliberate drift technique on a tight rear-engined
+    car or GT3 with high yaw inertia). The rule must NOT fire
+    — passive oversteer the driver controls is a technique
+    choice, not a coachable problem. Pin: the conjunction
+    prevents flagging drift drivers."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "exit_oversteer_index": 0.55,
+            "exit_throttle_correction_count": 0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _OVERSTEER_RULE_ID not in fired_ids, (
+        f"{_OVERSTEER_RULE_ID} fired on passive-oversteer "
+        f"context — flagged a drift-style driver. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_oversteer_silent_when_chassis_neutral() -> None:
+    """Two corrective throttle lifts on exit but oversteer
+    index only 0.10 (chassis is neutral — lifts were for
+    something else: visibility, fuel saving, traffic, or a
+    bump-induced wobble). The rule must NOT fire — coaching
+    "you have oversteer" when the chassis is neutral mis-
+    attributes the cause. Pin: the conjunction prevents
+    flagging non-oversteer lift patterns as oversteer."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "exit_oversteer_index": 0.10,
+            "exit_throttle_correction_count": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _OVERSTEER_RULE_ID not in fired_ids, (
+        f"{_OVERSTEER_RULE_ID} fired on neutral-chassis / "
+        f"lift context — mis-attributed lift to oversteer. "
+        f"Fired: {sorted(fired_ids)}"
     )

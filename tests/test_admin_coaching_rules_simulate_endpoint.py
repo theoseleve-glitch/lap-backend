@@ -248,6 +248,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # stays silent.
     "mid_corner_understeer_index": 0.10,
     "steering_correction_excess_deg": 1.0,
+    # T127 exit overrotation signals at neutral-chassis + no-
+    # correction values so `cs.rotation_excess.overrotation_exit`
+    # stays silent.
+    "exit_oversteer_index": 0.10,
+    "exit_throttle_correction_count": 0,
 }
 
 # A context where every braking rule should be silent — values
@@ -354,6 +359,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # stays silent.
     "mid_corner_understeer_index": 0.10,
     "steering_correction_excess_deg": 1.0,
+    # T127 exit overrotation signals at neutral-chassis + no-
+    # correction values so `cs.rotation_excess.overrotation_exit`
+    # stays silent.
+    "exit_oversteer_index": 0.10,
+    "exit_throttle_correction_count": 0,
 }
 
 
