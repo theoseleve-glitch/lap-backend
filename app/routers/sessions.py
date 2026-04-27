@@ -3,6 +3,7 @@ import time
 from typing import Annotated, cast
 from uuid import UUID
 
+import uuid6
 from fastapi import (
     APIRouter,
     Depends,
@@ -20,6 +21,8 @@ from lap_schemas.v1 import (
     SessionDetail,
     SessionIngestAccepted,
     SessionManifest,
+    StrategyPlan,
+    StrategyPlanCreate,
 )
 from lap_schemas.v1.action_prescription import ActionPrescriptionListItem
 from lap_schemas.v1.coaching_insight import CoachingInsight
@@ -47,6 +50,7 @@ from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
+from infra.orm import StrategyPlan as StrategyPlanRow
 from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
 from infra.orm import WeaknessEpisode as WeaknessEpisodeRow
@@ -474,4 +478,84 @@ def _insight_schema(row: CoachingInsightRow) -> CoachingInsight:
         corner_tag=row.corner_tag,
         suggested_prescription_id=row.suggested_prescription_id,
         flagged_false_positive=row.flagged_false_positive,
+    )
+
+
+@router.post(
+    "/{session_id}/strategy/plan",
+    response_model=StrategyPlan,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"description": "session_not_found (or not owned)"},
+        409: {"description": "strategy_plan_already_exists"},
+    },
+)
+async def create_strategy_plan(
+    session_id: UUID,
+    payload: StrategyPlanCreate,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StrategyPlan:
+    """T098 — set the pre-race strategy plan for a session.
+
+    Authz: only the owning driver can write; same 404 for
+    "session doesn't exist" vs "exists but not yours" so the
+    UUID space isn't an enumeration oracle.
+
+    Idempotency-by-conflict: T096's UNIQUE(session_id) enforces
+    one canonical plan per session. A second POST returns 409
+    rather than silently overwriting — re-plans during the race
+    go through StrategyEvent (T097, kind='plan'), preserving
+    the audit trail.
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    session_row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if (
+        session_row is None
+        or profile is None
+        or session_row.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+    existing = (
+        await db.execute(
+            select(StrategyPlanRow).where(
+                StrategyPlanRow.session_id == session_id
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="strategy_plan_already_exists",
+        )
+    row = StrategyPlanRow(
+        id=uuid6.uuid7(),
+        session_id=session_id,
+        planned_stints=payload.planned_stints,
+        planned_fuel_liters=payload.planned_fuel_liters,
+        planned_pit_laps=list(payload.planned_pit_laps),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return StrategyPlan(
+        id=row.id,
+        session_id=row.session_id,
+        created_at=row.created_at,
+        planned_stints=row.planned_stints,
+        planned_fuel_liters=row.planned_fuel_liters,
+        planned_pit_laps=tuple(row.planned_pit_laps),
     )
