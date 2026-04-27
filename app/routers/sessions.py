@@ -11,6 +11,7 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
+    Query,
     Response,
     UploadFile,
     status,
@@ -23,6 +24,8 @@ from lap_schemas.v1 import (
     SessionManifest,
     StrategyEvent,
     StrategyEventCreate,
+    StrategyHistoryEntry,
+    StrategyHistoryList,
     StrategyPlan,
     StrategyPlanCreate,
     StrategyTimelineResponse,
@@ -64,6 +67,7 @@ from infra.storage import BlobStoreProtocol
 from infra.task_dispatcher import TaskDispatcherProtocol
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
+driver_router = APIRouter(prefix="/api/v1/driver", tags=["sessions"])
 
 
 @router.post(
@@ -823,3 +827,63 @@ async def get_strategy_visualization(
             plan_row.execution_score if plan_row is not None else None
         ),
     )
+
+
+@driver_router.get(
+    "/strategy/history",
+    response_model=StrategyHistoryList,
+)
+async def get_driver_strategy_history(
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> StrategyHistoryList:
+    """T106 — driver-scoped list of recent sessions with a
+    StrategyPlan (T096) attached, each entry carrying the plan
+    summary and T102's persisted execution_score.
+
+    Authz: only the caller's own sessions appear (driver_id
+    filter on the join). Owned-but-no-plans returns 200 with
+    an empty list — distinct from "driver not found".
+
+    Ordering: session.created_at DESC (most recent first — the
+    canonical "recent" interpretation; webapp scrolls down for
+    older). Plans without an execution_score yet are still
+    listed (None vs 0 distinction preserved).
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        return StrategyHistoryList(entries=())
+
+    rows = (
+        await db.execute(
+            select(StrategyPlanRow, SessionRow)
+            .join(
+                SessionRow,
+                SessionRow.id == StrategyPlanRow.session_id,
+            )
+            .where(SessionRow.driver_id == profile.id)
+            .order_by(SessionRow.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+
+    entries = tuple(
+        StrategyHistoryEntry(
+            session_id=plan.session_id,
+            session_created_at=session.created_at,
+            planned_stints=plan.planned_stints,
+            planned_fuel_liters=plan.planned_fuel_liters,
+            planned_pit_laps=tuple(plan.planned_pit_laps),
+            execution_score=plan.execution_score,
+        )
+        for plan, session in rows
+    )
+    return StrategyHistoryList(entries=entries)
+
