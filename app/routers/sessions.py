@@ -26,6 +26,7 @@ from lap_schemas.v1 import (
     StrategyPlan,
     StrategyPlanCreate,
     StrategyTimelineResponse,
+    StrategyVisualization,
 )
 from lap_schemas.v1.action_prescription import ActionPrescriptionListItem
 from lap_schemas.v1.coaching_insight import CoachingInsight
@@ -711,5 +712,114 @@ async def get_strategy_timeline(
                 created_at=ev.created_at,
             )
             for ev in event_rows
+        ),
+    )
+
+
+@router.get(
+    "/{session_id}/strategy/visualization",
+    response_model=StrategyVisualization,
+    responses={404: {"description": "session_not_found (or not owned)"}},
+)
+async def get_strategy_visualization(
+    session_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StrategyVisualization:
+    """T105 — webapp-facing aggregated read for the plan-vs-actual
+    chart. Bundles T096 plan + actuals derived from T097 events +
+    T102 execution_score. Returns the visualization-shaped tuples
+    so the webapp doesn't reimplement the fuel-summing or
+    stint-length-derivation math (which must stay aligned with
+    T101's divergence math).
+
+    Authz: same pattern as T100 — only the owning driver reads.
+    Empty shape (plan=null, all actuals empty/0, score=null) for
+    a session with no strategy data; distinct from 404 so the UI
+    distinguishes "no strategy recorded" from "session not found".
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    session_row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if (
+        session_row is None
+        or profile is None
+        or session_row.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+
+    plan_row = (
+        await db.execute(
+            select(StrategyPlanRow).where(
+                StrategyPlanRow.session_id == session_id
+            )
+        )
+    ).scalar_one_or_none()
+
+    pit_rows = (
+        await db.execute(
+            select(StrategyEventRow)
+            .where(
+                StrategyEventRow.session_id == session_id,
+                StrategyEventRow.kind == "pit",
+            )
+            .order_by(StrategyEventRow.at_lap.asc())
+        )
+    ).scalars().all()
+    stint_end_rows = (
+        await db.execute(
+            select(StrategyEventRow)
+            .where(
+                StrategyEventRow.session_id == session_id,
+                StrategyEventRow.kind == "stint_end",
+            )
+            .order_by(StrategyEventRow.at_lap.asc())
+        )
+    ).scalars().all()
+
+    actual_pit_laps = tuple(p.at_lap for p in pit_rows)
+    # Mirrors T101's defensive `details.get("fuel_added_liters", 0)` —
+    # tire-only stops legitimately omit the key and contribute 0.
+    actual_fuel_total = sum(
+        float(p.details.get("fuel_added_liters", 0) or 0)
+        for p in pit_rows
+    )
+    # stint 1 = first end_lap; stint N = end_lap[N] - end_lap[N-1]
+    stint_lengths: list[int] = []
+    prev = 0
+    for ev in stint_end_rows:
+        stint_lengths.append(ev.at_lap - prev)
+        prev = ev.at_lap
+
+    return StrategyVisualization(
+        plan=(
+            StrategyPlan(
+                id=plan_row.id,
+                session_id=plan_row.session_id,
+                created_at=plan_row.created_at,
+                planned_stints=plan_row.planned_stints,
+                planned_fuel_liters=plan_row.planned_fuel_liters,
+                planned_pit_laps=tuple(plan_row.planned_pit_laps),
+            )
+            if plan_row is not None
+            else None
+        ),
+        actual_pit_laps=actual_pit_laps,
+        actual_fuel_liters_total=actual_fuel_total,
+        actual_stint_lengths=tuple(stint_lengths),
+        execution_score=(
+            plan_row.execution_score if plan_row is not None else None
         ),
     )
