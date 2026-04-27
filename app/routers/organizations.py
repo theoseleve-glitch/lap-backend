@@ -1,8 +1,9 @@
-"""T163-T165 (sprint2-backend) — organizations endpoints.
+"""T163-T166 (sprint2-backend) — organizations endpoints.
 
 T163 — POST /api/v1/orgs creates an Organization.
 T164 — POST /api/v1/orgs/:id/invites creates an invitation row.
 T165 — POST /api/v1/orgs/:id/invites/:token/accept redeems it.
+T166 — DELETE /api/v1/orgs/:id/members/:user_id removes member.
 
 T163 endpoint:
   - assigns admin_user_id to the calling user
@@ -31,6 +32,19 @@ T165 endpoint:
     role and stamps invitation.accepted_at = now() in the
     same transaction
   - returns 201 with OrganizationMembership shape
+
+T166 endpoint:
+  - validates the caller is the org admin (403, status parity
+    on unknown-org)
+  - rejects admin self-removal (409 Conflict — preserves the
+    'every org has exactly one admin' invariant; admin
+    departure goes through a future transfer / delete-org
+    flow, not member removal)
+  - returns 404 if the (org_id, user_id) pair has no member
+    row
+  - deletes the OrganizationMember row, returns 204
+  - invitations are not touched on remove (audit history;
+    a removed member could be re-invited later)
 
 The schema-layer Pydantic enforces input bounds (name 1-120,
 seats_limit >= 1, plan ∈ {free, team, pro}, invite role ∈
@@ -284,3 +298,56 @@ async def accept_organization_invitation(
         role=member.role,
         created_at=member.created_at,
     )
+
+
+@router.delete(
+    "/{org_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"description": "not_org_admin"},
+        404: {"description": "member_not_found"},
+        409: {"description": "cannot_remove_admin"},
+    },
+)
+async def remove_organization_member(
+    org_id: UUID,
+    user_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    org = (
+        await db.execute(
+            select(OrganizationRow).where(
+                OrganizationRow.id == org_id
+            )
+        )
+    ).scalar_one_or_none()
+    if org is None or org.admin_user_id != user.id:
+        # Status parity with T164: non-existent and not-admin
+        # both return 403 to non-admins.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_org_admin",
+        )
+    if user_id == org.admin_user_id:
+        # Admin self-removal would orphan the org; admin
+        # departure is a separate (future) flow.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="cannot_remove_admin",
+        )
+    member = (
+        await db.execute(
+            select(OrganizationMemberRow).where(
+                OrganizationMemberRow.org_id == org_id,
+                OrganizationMemberRow.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="member_not_found",
+        )
+    await db.delete(member)
+    await db.commit()
