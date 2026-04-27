@@ -1,4 +1,4 @@
-"""T163-T171 (sprint2-backend) — organizations endpoints.
+"""T163-T174 (sprint2-backend) — organizations endpoints.
 
 T163 — POST   /api/v1/orgs creates an Organization.
 T164 — POST   /api/v1/orgs/:id/invites creates an invitation row.
@@ -7,6 +7,7 @@ T166 — DELETE /api/v1/orgs/:id/members/:user_id removes member.
 T167 — GET    /api/v1/orgs/:id/members lists members under RLS.
 T169 — GET    /api/v1/orgs/:id/drivers/:uid/profile coach view.
 T171 — GET    /api/v1/orgs/:id/dashboard coach roster.
+T174 — GET    /api/v1/orgs/:id/metrics aggregate KPIs.
 
 T163 endpoint:
   - assigns admin_user_id to the calling user
@@ -87,8 +88,9 @@ the schema, not the controller.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 import uuid6
@@ -99,6 +101,7 @@ from lap_schemas.v1 import (
     DriverProfileAggregate,
     OrganizationCreate,
     OrganizationInvitationCreate,
+    OrgMetrics,
 )
 from lap_schemas.v1 import Organization as OrganizationSchema
 from lap_schemas.v1 import OrganizationInvitation as OrgInvitationSchema
@@ -111,6 +114,7 @@ from lap_schemas.v1 import (
 from lap_schemas.v1 import (
     OrganizationMembership as OrgMembershipSchema,
 )
+from lap_schemas.v1.skill_drilldown import SkillDimensionName
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -122,6 +126,7 @@ from infra.orm import DriverProgressSnapshot as ProgressSnapshotRow
 from infra.orm import Organization as OrganizationRow
 from infra.orm import OrganizationInvitation as OrgInvitationRow
 from infra.orm import OrganizationMember as OrganizationMemberRow
+from infra.orm import Session as SessionRow
 from infra.orm import User as UserRow
 from infra.orm import WeaknessEpisode as WeaknessEpisodeRow
 from infra.stripe import update_subscription_quantity
@@ -671,3 +676,164 @@ async def _build_dashboard_entry(
         open_weaknesses=int(open_weaknesses),
         open_prescriptions=int(open_rx),
     )
+
+
+# T174 — KPI windows match the global /admin/kpis convention
+# (last 7 days for WPD), with a wider 30-day window for skill
+# gain comparisons (a single week is too noisy).
+_WPD_WINDOW = timedelta(days=7)
+_GAIN_WINDOW = timedelta(days=30)
+_DIM_NAMES: tuple[SkillDimensionName, ...] = (
+    "braking",
+    "throttle_pickup",
+    "minimum_speed",
+    "line_consistency",
+    "tire_management",
+    "racecraft",
+    "fatigue_consistency",
+    "strategy_execution",
+    "setup_sensitivity",
+    "adaptation",
+)
+
+
+@router.get(
+    "/{org_id}/metrics",
+    response_model=OrgMetrics,
+    responses={
+        403: {"description": "not_authorized"},
+    },
+)
+async def get_org_metrics(
+    org_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OrgMetrics:
+    """T174 — admin/coach reads org-level aggregate KPIs.
+
+    Two metrics:
+      - wpd: distinct drivers in this org with ≥1 session in
+        the last 7 days
+      - best_gain_dimension + best_gain_value: across the org's
+        drivers, the SkillDimensionName whose `score` grew most
+        on average over the last 30 days. None when fewer than
+        2 snapshots exist for any driver (no delta).
+    """
+    caller_membership = (
+        await db.execute(
+            select(OrganizationMemberRow).where(
+                OrganizationMemberRow.org_id == org_id,
+                OrganizationMemberRow.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if (
+        caller_membership is None
+        or caller_membership.role == "driver"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_authorized",
+        )
+
+    driver_user_ids = list(
+        (
+            await db.execute(
+                select(OrganizationMemberRow.user_id).where(
+                    OrganizationMemberRow.org_id == org_id,
+                    OrganizationMemberRow.role == "driver",
+                )
+            )
+        ).scalars()
+    )
+    if not driver_user_ids:
+        return OrgMetrics(wpd=0)
+
+    driver_profile_ids = list(
+        (
+            await db.execute(
+                select(DriverProfileRow.id).where(
+                    DriverProfileRow.user_id.in_(driver_user_ids)
+                )
+            )
+        ).scalars()
+    )
+    if not driver_profile_ids:
+        return OrgMetrics(wpd=0)
+
+    now = datetime.now(UTC)
+    wpd = (
+        await db.execute(
+            select(
+                func.count(func.distinct(SessionRow.driver_id))
+            ).where(
+                SessionRow.driver_id.in_(driver_profile_ids),
+                SessionRow.created_at >= now - _WPD_WINDOW,
+            )
+        )
+    ).scalar_one()
+
+    # Best gain: per-driver delta (latest score - earliest score
+    # within the 30d window) per dimension, then averaged across
+    # drivers per dimension. Drivers with <2 snapshots in window
+    # contribute nothing for any dim.
+    snap_rows = (
+        (
+            await db.execute(
+                select(ProgressSnapshotRow)
+                .where(
+                    ProgressSnapshotRow.driver_id.in_(
+                        driver_profile_ids
+                    ),
+                    ProgressSnapshotRow.captured_at
+                    >= now - _GAIN_WINDOW,
+                )
+                .order_by(ProgressSnapshotRow.captured_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    best_dim, best_val = _compute_best_gain(snap_rows)
+    return OrgMetrics(
+        wpd=int(wpd),
+        best_gain_dimension=best_dim,
+        best_gain_value=best_val,
+    )
+
+
+def _compute_best_gain(
+    snap_rows: Sequence[ProgressSnapshotRow],
+) -> tuple[SkillDimensionName | None, float | None]:
+    """Picks the dimension with the largest org-wide average
+    score delta. Returns (None, None) when no driver has ≥2
+    snapshots with a usable score for any dimension."""
+    by_driver: dict[UUID, list[ProgressSnapshotRow]] = {}
+    for r in snap_rows:
+        by_driver.setdefault(r.driver_id, []).append(r)
+
+    dim_deltas: dict[str, list[float]] = {d: [] for d in _DIM_NAMES}
+    for snaps in by_driver.values():
+        if len(snaps) < 2:
+            continue
+        # snap_rows is already sorted captured_at asc — first
+        # is earliest, last is latest within the 30-day window
+        earliest, latest = snaps[0], snaps[-1]
+        for dim in _DIM_NAMES:
+            early_dim = getattr(earliest, dim) or {}
+            late_dim = getattr(latest, dim) or {}
+            if "score" in early_dim and "score" in late_dim:
+                delta = float(late_dim["score"]) - float(
+                    early_dim["score"]
+                )
+                dim_deltas[dim].append(delta)
+
+    avg_per_dim: dict[str, float] = {
+        dim: sum(deltas) / len(deltas)
+        for dim, deltas in dim_deltas.items()
+        if deltas
+    }
+    if not avg_per_dim:
+        return None, None
+    best_dim = max(avg_per_dim, key=lambda d: avg_per_dim[d])
+    return cast(SkillDimensionName, best_dim), avg_per_dim[best_dim]
