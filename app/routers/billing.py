@@ -52,6 +52,19 @@ def _resolve_waitlist_promo_id(cfg: Config) -> str | None:
     return str(matches.data[0].id)
 
 
+_B2B_PLANS: frozenset[BillingPlan] = frozenset(
+    {"b2b_5seat", "b2b_15seat", "b2b_unlimited"}
+)
+# T148 — consumer trial; T178 — B2B trial (longer because team
+# onboarding takes more than individual eval).
+_CONSUMER_TRIAL_DAYS = 14
+_B2B_TRIAL_DAYS = 30
+
+
+def _trial_days_for(plan: BillingPlan) -> int:
+    return _B2B_TRIAL_DAYS if plan in _B2B_PLANS else _CONSUMER_TRIAL_DAYS
+
+
 def _resolve_price_id(plan: BillingPlan, cfg: Config) -> str:
     mapping: dict[BillingPlan, str] = {
         "lap_monthly": cfg.stripe_price_lap_monthly,
@@ -88,7 +101,9 @@ async def create_checkout_session(
         "line_items": [{"price": price_id, "quantity": 1}],
         "client_reference_id": str(user.id),
         "metadata": {"user_id": str(user.id)},
-        "subscription_data": {"trial_period_days": 14},
+        "subscription_data": {
+            "trial_period_days": _trial_days_for(body.plan)
+        },
         "success_url": (
             f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}"
         ),
