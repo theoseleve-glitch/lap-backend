@@ -456,6 +456,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # load-bearing silencer.)
     "prior_session_count_at_track": 8,
     "lap_time_improvement_per_lap_pct_below_cohort": 0.05,
+    # T157 car-change signals at settled-on-car / clean-transfer
+    # values so `ad.car_change.transfer_gap` stays silent. (Both
+    # signals quiet — sessions-since-car-change 12 is well above
+    # the <=3 firing threshold; transfer gap 0.005 is well below
+    # the >=0.02 firing threshold; either alone is load-bearing
+    # silencer.)
+    "sessions_since_car_change": 12,
+    "pace_transfer_gap_pct_above_baseline": 0.005,
 }
 
 # A context where every braking rule should be silent — values
@@ -733,6 +741,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # as firing fixture; both signals quiet independently.
     "prior_session_count_at_track": 8,
     "lap_time_improvement_per_lap_pct_below_cohort": 0.05,
+    # T157 car-change signals at settled-on-car / clean-transfer
+    # values so `ad.car_change.transfer_gap` stays silent. Same
+    # shape as firing fixture; both signals quiet independently.
+    "sessions_since_car_change": 12,
+    "pace_transfer_gap_pct_above_baseline": 0.005,
 }
 
 

@@ -50,6 +50,7 @@ _WET_LINE_RULE_ID = "ad.weather_transition.wet_line_wrong"
 _RAIN_ONSET_RULE_ID = "ad.rain_start.tire_commitment_late"
 _TRAFFIC_DEFENSE_RULE_ID = "ad.traffic_loss.defensive_excess"
 _NEW_TRACK_RULE_ID = "ad.new_track.learning_rate_slow"
+_CAR_CHANGE_RULE_ID = "ad.car_change.transfer_gap"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -122,6 +123,17 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # or skill plateau).
     "prior_session_count_at_track": 0,
     "lap_time_improvement_per_lap_pct_below_cohort": 0.50,
+    # T157 — car-change transfer gap. Caller supplies the count
+    # of sessions since the driver switched cars (<=3 means
+    # still in the typical transfer window) and the lap-time
+    # deficit pct vs the driver's platform-normalized prior-car
+    # baseline (>=0.02 means 2%+ slower than the cohort-adjusted
+    # expectation, after correcting for car-class differences).
+    # Distinct from T156 (track-learning) by attributing the
+    # deficit specifically to car-platform transfer, not
+    # track familiarity.
+    "sessions_since_car_change": 1,
+    "pace_transfer_gap_pct_above_baseline": 0.04,
 }
 
 
@@ -689,4 +701,86 @@ def test_new_track_silent_when_learning_rate_matches_cohort() -> None:
         f"{_NEW_TRACK_RULE_ID} fired on cohort-paced learner — "
         f"coached track-learning to a driver already learning at "
         f"cohort speed. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T157: ad.car_change.transfer_gap --------------------------
+
+
+def test_car_change_fires_on_combined_recent_change_and_transfer_gap() -> None:
+    """Both signals firing: 1 session since car change (well below
+    the <=3 firing threshold — still in the typical transfer
+    window) AND lap-time 4% above platform-normalized prior-car
+    baseline (well above the 0.02 firing threshold — meaningful
+    deficit, not noise). Pin: the canonical "you switched cars
+    and the pace hasn't transferred" pattern produces an insight,
+    distinct from T156 (track-learning) by attributing the
+    deficit specifically to car-platform transfer."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "sessions_since_car_change": 1,
+            "pace_transfer_gap_pct_above_baseline": 0.04,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _CAR_CHANGE_RULE_ID in fired_ids, (
+        f"expected {_CAR_CHANGE_RULE_ID} to fire on combined "
+        f"recent-change + transfer-gap context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_car_change_silent_when_well_settled_into_car() -> None:
+    """4% pace deficit but driver has 12 sessions on the new car
+    (well past the <=3 transfer window). The deficit is then
+    attributable to car-class skill ceiling, setup, or pace
+    plateau — not transfer adaptation. The rule must NOT fire —
+    coaching "use the car-change transfer protocol" to a driver
+    who has been on the car for months would mis-attribute the
+    cause and waste their attention. Pin: the recency guard
+    separates car-platform transfer failures from generic skill /
+    setup issues at the new platform (covered by other rules)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "sessions_since_car_change": 12,
+            "pace_transfer_gap_pct_above_baseline": 0.04,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _CAR_CHANGE_RULE_ID not in fired_ids, (
+        f"{_CAR_CHANGE_RULE_ID} fired on settled-on-car driver — "
+        f"mis-attributed plateau / skill issue to car-platform "
+        f"transfer. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_car_change_silent_when_pace_transferred_cleanly() -> None:
+    """Recent car change (1 session since switch) but pace deficit
+    only 0.5% above prior-car baseline — driver transferred pace
+    cleanly. The rule must NOT fire — coaching transfer-protocol
+    discipline to a driver who already transferred well would
+    over-state the issue. Pin: the transfer-gap guard prevents
+    firing on every car-change event regardless of how the pace
+    transferred. The rule targets the slow-transfer failure mode
+    specifically, not car changes in isolation."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "sessions_since_car_change": 1,
+            "pace_transfer_gap_pct_above_baseline": 0.005,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _CAR_CHANGE_RULE_ID not in fired_ids, (
+        f"{_CAR_CHANGE_RULE_ID} fired on clean-transfer driver — "
+        f"coached transfer-protocol to a driver who already "
+        f"transferred pace cleanly. Fired: {sorted(fired_ids)}"
     )

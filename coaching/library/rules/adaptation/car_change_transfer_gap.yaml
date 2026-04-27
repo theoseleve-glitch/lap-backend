@@ -1,0 +1,37 @@
+id: "ad.car_change.transfer_gap"
+version: 1
+category: strategy
+subcategory: car_transfer
+difficulty: intermediate
+
+detection:
+  signal: pace_transfer_gap_pct_above_baseline
+  condition: "sessions_since_car_change <= 3 and pace_transfer_gap_pct_above_baseline >= 0.02"
+  context:
+    must_have_channels: ["lap_time", "session_id", "car_id", "lap_number"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 1
+    window_days: 14
+
+severity_rule: "linear, 0.02 = low, 0.04 = medium, 0.07 = high"
+
+explanation_template:
+  beginner: "You switched cars {{sessions_since_car_change}} session(s) ago and your pace is {{pace_transfer_gap_pct_above_baseline}} above your prior-car baseline (after car-class normalization). The platform changed under you — different brake feel, different turn-in load, different throttle response — and your reflexes are still calibrated to the old reference. Don't try to drive at full pace yet. Spend 1 session at 90% deliberately re-anchoring brake markers and turn-in loads on the new car (record what 'limit' feels like in 3-4 reference corners), then push from there. Driving at 100% with old-car reflexes burns the first 2 sessions to mistakes; deliberate re-calibration cuts the transfer to 1 session."
+  intermediate: "Sessions since change {{sessions_since_car_change}}, transfer gap {{pace_transfer_gap_pct_above_baseline}} pct. Distinct from `ad.new_track.learning_rate_slow` (T156 — track-learning rate) by attributing specifically to car-platform transfer: same track, same line memory, different car-feel reference. The transfer-gap shape is non-linear: typically 4-7% deficit in session 1, 2-3% in session 2, <1% by session 3 if the driver is using a deliberate re-calibration protocol (vs flat 5-7% across all early sessions if they're trying to drive at full pace from lap 1). The drill is explicit pre-session corner-by-corner reference re-locking — don't trust prior-car reflexes, re-establish each reference deliberately."
+  advanced: "Transfer gap {{pace_transfer_gap_pct_above_baseline}} pct, n={{sessions_since_car_change}}. The mechanism: motor-skill transfer is reference-bound. Brake-pressure intent ('squeeze hard then release smoothly') transfers cleanly across cars, but absolute-magnitude calibration (how hard 'hard', how late the brake marker, how much steering load tells you 'limit') is car-specific and re-learning takes structured exposure. Drivers who attempt to transfer at full pace exhibit two failure patterns: (a) over-trust prior reflexes (over-brake if new car has more grip, under-brake if less); (b) under-trust everything and drive cautiously across all references (low pace from generalized uncertainty). The disciplined alternative is per-reference re-calibration: identify 3-5 calibration-anchor corners on the new platform, dedicate one session to deliberately push-and-back-off cycles in those corners (pushing past your perceived limit by 5%, observing the actual limit, anchoring the new reference), then transfer that calibration to the rest of the lap. Calibration: 0.02 transfer-gap threshold corresponds to roughly the cohort-noise floor for car-class differences after normalization; below it the transfer is essentially complete; above it the structural calibration gap dominates. The 3-session recency window aligns with the typical convergence shape — transfer-gap research shows >90% convergence by session 3 for drivers using deliberate protocol, vs flat 5-7% deficit across 5+ sessions for drivers driving by reflex."
+
+prescription:
+  drill_template_id: "drill.car_change_transfer_protocol"
+  expected_gain_kmh: "2-5"
+  success_condition:
+    metric: "pace_transfer_gap_pct_above_baseline"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_2_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["car-platform re-calibration protocol transfers — the per-reference re-locking discipline is the same skill on either platform. Sim drivers face additional cross-title transfer challenges (different physics models, different FFB tuning, different visual cues) that increase the calibration burden vs same-title car switches; the rule applies to both intra-title car switches and cross-title transitions. Real-car drivers face physical adaptation challenges (different cockpit, different visibility, different tactile feedback through the chassis) that compound the platform-transfer issue; the protocol applies but may need explicit familiarization-lap budgeting on top of the reference re-calibration. The 3-session recency window is platform-agnostic but the absolute pace-gap thresholds may need recalibration for cross-platform (sim → real or real → sim) transitions, where the gap is typically larger."]
