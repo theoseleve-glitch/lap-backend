@@ -164,6 +164,16 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # endurance signals: any rule referencing this name will
     # KeyError if the context omits it.
     "sessions_until_target_event": 999,
+    # T104 strategy-execution signals at "good enough" values so
+    # `strat.execution.low_score` stays silent in the firing
+    # context (this fixture targets braking-rule firing, not
+    # strategy). Same KeyError-avoidance reason as above —
+    # anything the rule's condition or template references must
+    # be present.
+    "strategy_execution_score": 100,
+    "pit_lap_delta_total": 0,
+    "fuel_delta_liters": 0.0,
+    "stint_duration_delta_laps": 0,
 }
 
 # A context where every braking rule should be silent — values
@@ -191,6 +201,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     "stint_lap_count": 100,
     # T091 target-preparation signal at sprint-only sentinel.
     "sessions_until_target_event": 999,
+    # T104 strategy-execution signals at "good enough" values so
+    # `strat.execution.low_score` stays silent in the quiet context.
+    "strategy_execution_score": 100,
+    "pit_lap_delta_total": 0,
+    "fuel_delta_liters": 0.0,
+    "stint_duration_delta_laps": 0,
 }
 
 

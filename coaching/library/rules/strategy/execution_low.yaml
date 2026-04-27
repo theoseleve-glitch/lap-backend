@@ -1,0 +1,37 @@
+id: "strat.execution.low_score"
+version: 1
+category: strategy
+subcategory: plan_vs_actual
+difficulty: beginner
+
+detection:
+  signal: strategy_execution_score
+  condition: "strategy_execution_score < 70"
+  context:
+    must_have_channels: ["strategy_execution_score"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 1
+    window_days: 14
+
+severity_rule: "linear, 70 = low, 50 = medium, 30 = high"
+
+explanation_template:
+  beginner: "Plan vs actual scored {{strategy_execution_score}}/100 for that session. Biggest miss: pit-lap timing was off by {{pit_lap_delta_total}} lap(s) versus the plan. Walk the plan one more time before the next race start."
+  intermediate: "Strategy execution = {{strategy_execution_score}}/100. Pit timing missed by {{pit_lap_delta_total}} lap(s); fuel delta {{fuel_delta_liters}} L; stint length delta {{stint_duration_delta_laps}} laps. Rehearse the plan trigger points (lap counter targets, fuel cutoff)."
+  advanced: "Execution {{strategy_execution_score}}/100 — pit_lap_delta={{pit_lap_delta_total}}, fuel_delta_l={{fuel_delta_liters}}, stint_delta_laps={{stint_duration_delta_laps}}. Drill: pre-race plan rehearsal with trigger-lap callouts. Re-evaluate fuel target if delta is structural rather than situational."
+
+prescription:
+  drill_template_id: "drill.strategy_plan_rehearsal"
+  expected_gain_kmh: "0-0"
+  success_condition:
+    metric: "strategy_execution_score"
+    comparison: "gte"
+    target_pct: 0.85
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim allows perfect plan rehearsal (pause/resume); real-world fuel mass and unscheduled FCYs make plan adherence harder, so real sessions may need a different threshold over time"]
