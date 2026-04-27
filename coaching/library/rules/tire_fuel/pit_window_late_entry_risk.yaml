@@ -1,0 +1,37 @@
+id: "fm.pit_window.late_entry_risk"
+version: 1
+category: strategy
+subcategory: pit_window
+difficulty: advanced
+
+detection:
+  signal: predicted_fuel_out_lap_minus_planned_pit_lap
+  condition: "predicted_fuel_out_lap_minus_planned_pit_lap <= 1.0 and fuel_burn_excess_pct_above_target >= 0.05"
+  context:
+    must_have_channels: ["fuel_level", "lap_number", "lap_time"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 1.0 = low, 0.0 = medium, -1.0 = high"
+
+explanation_template:
+  beginner: "Your over-burn ({{fuel_burn_excess_pct_above_target}} above target) means you'll run out of fuel about {{predicted_fuel_out_lap_minus_planned_pit_lap}} laps from your planned pit lap. The strategy team is going to call you in early — start saving fuel now (lift before T1, short-shift the long straights) or be prepared for an unscheduled stop. Every lap you keep over-burning narrows the safety margin further."
+  intermediate: "Predicted fuel-out vs planned pit: {{predicted_fuel_out_lap_minus_planned_pit_lap}} laps. Strategy-escalation rule for T145 — over-burn becomes critical when it threatens the planned pit window. The trade-off has flipped: pace gain from continued over-burn is overwhelmed by the cost of a forced unscheduled stop (typically 18-25s on most circuits). Apply the lever ranking from T145 immediately, prioritizing high-fuel-saved-per-second-lost moves until margin is restored."
+  advanced: "Pit-window safety margin {{predicted_fuel_out_lap_minus_planned_pit_lap}} laps, over-burn {{fuel_burn_excess_pct_above_target}}. Strategy-critical escalation — distinct from T145 (broad over-burn) by surfacing the consequence threshold. The decision frame: cost-of-forced-stop ≈ 18-25s × P(stop required); cost-of-saving-now ≈ pace-deficit-per-lap × laps-to-pit. Below 1.0 lap margin, the expected-value math always favors saving. Above 1.0 lap margin, the math depends on stint position and tire condition. T148 fires only on the unambiguous below-margin side; ambiguous cases (margin between 1.0 and 3.0) are left to the strategist's judgment via T145's broader signal."
+
+prescription:
+  drill_template_id: "drill.fuel_save_to_pit_window"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "predicted_fuel_out_lap_minus_planned_pit_lap"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["pit-window risk-management transfers — the lever ranking and decision-theory framing are the same on either platform. Sim drivers benefit from algorithmically-precise fuel-prediction widgets (no measurement error), while real-car drivers face fuel-flow regulation, ERS interactions, and pit-lane fuel-flow lockouts that complicate the prediction. Real-car threshold may need a small relaxation (e.g., 1.5 laps margin) to account for prediction uncertainty; the rule's prescription remains valid in both contexts."]

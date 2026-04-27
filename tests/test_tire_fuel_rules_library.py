@@ -49,6 +49,7 @@ _FLAT_SPOT_RULE_ID = "tm.lockup_pattern.flat_spot_risk"
 _FUEL_BURN_EXCESS_RULE_ID = "fm.fuel_burn_excess.vs_target"
 _LIFT_COAST_RULE_ID = "fm.lift_and_coast.too_rare"
 _INEFFECTIVE_SAVING_RULE_ID = "fm.fuel_saving.ineffective_pattern"
+_PIT_WINDOW_RULE_ID = "fm.pit_window.late_entry_risk"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -101,6 +102,13 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # below 0.50 means the lap-time cost outweighs the fuel
     # savings (driver should pick different zones).
     "fuel_saved_per_second_lost_ratio": 0.30,
+    # T148 — strategy-escalation rule: over-burn becomes critical
+    # when it threatens the planned pit window. Caller supplies
+    # the predicted-fuel-out-lap minus planned-pit-lap (negative
+    # or near-zero = safety margin too tight). REUSES T145's
+    # `fuel_burn_excess_pct_above_target` to attribute the cause
+    # to driver behavior (vs strategist miscalculation).
+    "predicted_fuel_out_lap_minus_planned_pit_lap": -0.5,
 }
 
 
@@ -727,4 +735,88 @@ def test_ineffective_saving_silent_when_efficiency_acceptable() -> None:
         f"and-coast driver — coached zone refinement to a driver "
         f"whose zones are already paying off. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T148: fm.pit_window.late_entry_risk -----------------------
+
+
+def test_pit_window_fires_on_combined_negative_margin_and_excess() -> None:
+    """Both signals firing: predicted fuel-out is 0.5 laps
+    BEFORE the planned pit lap (well below the 1.0 lap firing
+    threshold — the planned window is unsafe) AND fuel-burn 8%
+    above target (well above the 0.05 firing threshold — over-
+    burn is the driver-attributable cause). Pin: the canonical
+    "your over-burn is putting the strategy at risk" pattern
+    produces an insight, distinct from T145 (broad over-burn)
+    by surfacing the strategy-critical escalation."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "predicted_fuel_out_lap_minus_planned_pit_lap": -0.5,
+            "fuel_burn_excess_pct_above_target": 0.08,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PIT_WINDOW_RULE_ID in fired_ids, (
+        f"expected {_PIT_WINDOW_RULE_ID} to fire on combined "
+        f"negative-margin + over-burn context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_pit_window_silent_when_safety_margin_healthy() -> None:
+    """Over-burn present (8% above target — T145 fires) but
+    predicted fuel-out is 5 laps AFTER the planned pit lap (well
+    above the 1.0 lap firing threshold — strategy still safe).
+    The over-burn is real and worth coaching via T145, but the
+    pit-window risk hasn't materialized yet. The rule must NOT
+    fire — coaching "your pit window is at risk" when there's
+    plenty of safety margin would over-state urgency. Pin: the
+    margin guard enforces T148's strategy-critical framing,
+    distinct from T145's broader over-burn diagnosis."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "predicted_fuel_out_lap_minus_planned_pit_lap": 5.0,
+            "fuel_burn_excess_pct_above_target": 0.08,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PIT_WINDOW_RULE_ID not in fired_ids, (
+        f"{_PIT_WINDOW_RULE_ID} fired on healthy-margin driver — "
+        f"over-stated strategy risk when the safety margin is "
+        f"intact. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_pit_window_silent_when_burn_on_target() -> None:
+    """Predicted fuel-out is 0.5 laps before planned pit (margin
+    looks tight) but fuel-burn is on-target (1% excess — the
+    driver isn't over-burning). The tight margin is then
+    attributable to a pre-race strategy miscalculation (wrong
+    initial fuel load, unexpected SC laps), NOT driver behavior.
+    The rule must NOT fire — coaching "manage your fuel" to a
+    driver who isn't over-burning would misroute the diagnosis;
+    the engineer should adjust the pit lap, not coach the
+    driver. Pin: the burn-excess guard enforces driver-
+    attributable causation."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "predicted_fuel_out_lap_minus_planned_pit_lap": -0.5,
+            "fuel_burn_excess_pct_above_target": 0.01,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PIT_WINDOW_RULE_ID not in fired_ids, (
+        f"{_PIT_WINDOW_RULE_ID} fired on driver matching fuel "
+        f"target — mis-attributed strategist miscalculation to "
+        f"driver behavior. Fired: {sorted(fired_ids)}"
     )

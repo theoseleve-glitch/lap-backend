@@ -389,6 +389,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # 0.85 is well above the <=0.50 firing threshold and is the
     # load-bearing silencer.)
     "fuel_saved_per_second_lost_ratio": 0.85,
+    # T148 pit-window margin signal at healthy value so
+    # `fm.pit_window.late_entry_risk` stays silent. (Margin 5.0
+    # laps is well above the <=1.0 firing threshold and is the
+    # load-bearing silencer; T148 also requires fuel-burn
+    # excess >=0.05 which is short-circuited by the 0.01 value
+    # above.)
+    "predicted_fuel_out_lap_minus_planned_pit_lap": 5.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -617,6 +624,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # shape as firing fixture; load-bearing silencer is the
     # ratio (0.85, well above the <=0.50 firing threshold).
     "fuel_saved_per_second_lost_ratio": 0.85,
+    # T148 pit-window margin signal at healthy value so
+    # `fm.pit_window.late_entry_risk` stays silent. Same shape
+    # as firing fixture; load-bearing silencer is the margin
+    # (5.0 laps, well above the <=1.0 firing threshold).
+    "predicted_fuel_out_lap_minus_planned_pit_lap": 5.0,
 }
 
 
