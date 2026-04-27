@@ -57,6 +57,10 @@ def _resolve_price_id(plan: BillingPlan, cfg: Config) -> str:
         "lap_monthly": cfg.stripe_price_lap_monthly,
         "lap_yearly": cfg.stripe_price_lap_yearly,
         "waitlist_founder": cfg.stripe_price_waitlist_founder,
+        # T177 — B2B tiers
+        "b2b_5seat": cfg.stripe_price_b2b_5seat,
+        "b2b_15seat": cfg.stripe_price_b2b_15seat,
+        "b2b_unlimited": cfg.stripe_price_b2b_unlimited,
     }
     price_id = mapping[plan]
     if not price_id:

@@ -20,6 +20,12 @@ class Config(BaseSettings):
     stripe_price_lap_monthly: str = ""
     stripe_price_lap_yearly: str = ""
     stripe_price_waitlist_founder: str = ""
+    # T177 — B2B (org) pricing tiers. The 5-seat / 15-seat tiers are
+    # fixed-cap; b2b_unlimited has no seat cap (the price is set
+    # per-driver-active or flat-rate in the Stripe dashboard).
+    stripe_price_b2b_5seat: str = ""
+    stripe_price_b2b_15seat: str = ""
+    stripe_price_b2b_unlimited: str = ""
     # Stripe promotion code (created in dashboard) for the waitlist
     # founder cohort: 20% off for 12 months. Default matches the
     # canonical code; deploys can override per environment.
