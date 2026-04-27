@@ -263,6 +263,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `cs.steering_smoothness.saw_pattern` stays silent.
     "steering_correction_event_count_in_corner": 1,
     "steering_smoothness_index": 0.85,
+    # T130 cohort-deficit signals at above-pace + unlocked-cohort
+    # values so `cs.corner_speed.cohort_deficit` stays silent.
+    # (Percentile 0.65 = above median, well clear of the <=0.30
+    # firing threshold, and is the load-bearing silencer here —
+    # cohort_member_count 50 satisfies the >=20 sample-size guard.)
+    "corner_speed_cohort_percentile": 0.65,
+    "cohort_member_count": 50,
 }
 
 # A context where every braking rule should be silent — values
@@ -384,6 +391,13 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # `cs.steering_smoothness.saw_pattern` stays silent.
     "steering_correction_event_count_in_corner": 1,
     "steering_smoothness_index": 0.85,
+    # T130 cohort-deficit signals at above-pace + unlocked-cohort
+    # values so `cs.corner_speed.cohort_deficit` stays silent.
+    # Same shape as the firing fixture above; the load-bearing
+    # silencer is the percentile (0.65, well above the <=0.30
+    # firing threshold).
+    "corner_speed_cohort_percentile": 0.65,
+    "cohort_member_count": 50,
 }
 
 

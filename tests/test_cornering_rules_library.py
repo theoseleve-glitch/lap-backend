@@ -47,6 +47,7 @@ _UNDERSTEER_RULE_ID = "cs.rotation_lack.understeer_mid"
 _OVERSTEER_RULE_ID = "cs.rotation_excess.overrotation_exit"
 _TRAIL_BRAKE_RULE_ID = "cs.trail_brake_insufficient.rotation_missing"
 _SAW_PATTERN_RULE_ID = "cs.steering_smoothness.saw_pattern"
+_COHORT_DEFICIT_RULE_ID = "cs.corner_speed.cohort_deficit"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -81,6 +82,10 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T129 — sawing-steering pattern signals.
     "steering_correction_event_count_in_corner": 5,
     "steering_smoothness_index": 0.30,
+    # T130 — cohort percentile deficit signals (requires
+    # cohort: needs >=20 cohort members per T056).
+    "corner_speed_cohort_percentile": 0.15,
+    "cohort_member_count": 50,
 }
 
 
@@ -807,5 +812,80 @@ def test_saw_pattern_silent_when_smoothness_high() -> None:
     assert _SAW_PATTERN_RULE_ID not in fired_ids, (
         f"{_SAW_PATTERN_RULE_ID} fired on high-correction / "
         f"smooth context — flagged a smooth arc as sawing. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T130: cs.corner_speed.cohort_deficit (requires cohort) ----
+
+
+def test_cohort_deficit_fires_on_combined_low_percentile_and_unlocked() -> None:
+    """Both signals firing: corner-speed cohort percentile 0.15
+    (driver in bottom 15% of the cohort for this car+track) AND
+    cohort has 50 members (well above the T056 unlock threshold
+    of 20). Pin: the canonical "cohort says you have time to
+    find here" insight produces an actionable comparison."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "corner_speed_cohort_percentile": 0.15,
+            "cohort_member_count": 50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _COHORT_DEFICIT_RULE_ID in fired_ids, (
+        f"expected {_COHORT_DEFICIT_RULE_ID} to fire on combined "
+        f"low-percentile + unlocked-cohort context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_cohort_deficit_silent_when_cohort_too_small() -> None:
+    """Low percentile (0.15) but only 8 cohort members for this
+    car+track combo. The rule must NOT fire — percentiles from
+    <20 members are statistically meaningless (T056's design
+    rule). Coaching here would emit a confident-sounding insight
+    from thin data. Pin: the conjunction enforces T056's cohort
+    unlock threshold so cohort-dependent rules respect the
+    minimum sample-size discipline."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "corner_speed_cohort_percentile": 0.15,
+            "cohort_member_count": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _COHORT_DEFICIT_RULE_ID not in fired_ids, (
+        f"{_COHORT_DEFICIT_RULE_ID} fired on under-20-member "
+        f"cohort context — confident claim from thin cohort. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_cohort_deficit_silent_when_driver_at_or_above_pace() -> None:
+    """Cohort fully unlocked (50 members) but driver percentile
+    0.65 (above median — they're ahead of cohort pace at this
+    corner). The rule must NOT fire — coaching "cohort says you
+    have time to find" to a driver already ahead of cohort is
+    noise. Pin: baseline no-fire to prove the rule isn't fires-
+    always once the cohort is unlocked."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "corner_speed_cohort_percentile": 0.65,
+            "cohort_member_count": 50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _COHORT_DEFICIT_RULE_ID not in fired_ids, (
+        f"{_COHORT_DEFICIT_RULE_ID} fired on above-median driver "
+        f"context — coached deficit to a driver above cohort pace. "
         f"Fired: {sorted(fired_ids)}"
     )
