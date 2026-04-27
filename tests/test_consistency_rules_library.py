@@ -43,6 +43,7 @@ _HIGH_SPREAD_RULE_ID = "co.lap_time_variance.high_spread"
 _FADE_OVER_RUN_RULE_ID = "co.lap_time_trend.fade_over_run"
 _T1_VOLATILE_RULE_ID = "co.sector_consistency.t1_volatile"
 _BRAKE_DRIFT_RULE_ID = "co.braking_point_drift.over_run"
+_PASS_ABORT_RULE_ID = "rc.passing_attempts.abort_rate"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -68,6 +69,12 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # rhythm losses with a single threshold.
     "brake_point_drift_magnitude_meters_per_lap": 0.80,
     "brake_point_drift_signed_meters_per_lap": 0.80,
+    # T135 — opens racecraft `rc.*` namespace. Multi-driver
+    # tactical signals. abort_rate = fraction of passing
+    # attempts that the driver initiated and then bailed out
+    # of mid-move.
+    "passing_attempt_count": 8,
+    "passing_attempt_abort_rate": 0.55,
 }
 
 
@@ -422,4 +429,82 @@ def test_brake_drift_silent_when_brake_points_locked() -> None:
         f"{_BRAKE_DRIFT_RULE_ID} fired on locked-brake-point "
         f"driver — coached drift to a driver with consistent "
         f"brake points. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T135: rc.passing_attempts.abort_rate ----------------------
+
+
+def test_pass_abort_fires_on_combined_high_rate_and_enough_attempts() -> None:
+    """Both signals firing: 55% of passing attempts aborted (well
+    above the 0.40 firing threshold — clear pattern of bailing
+    out mid-move) AND 8 attempts in the session (well past the
+    5-attempt minimum sample size). Pin: the canonical "you
+    commit to passes you don't finish" pattern produces an
+    insight — the racecraft diagnosis is decision-making, not
+    pace."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "passing_attempt_count": 8,
+            "passing_attempt_abort_rate": 0.55,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PASS_ABORT_RULE_ID in fired_ids, (
+        f"expected {_PASS_ABORT_RULE_ID} to fire on combined "
+        f"high-abort-rate + enough-attempts context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_pass_abort_silent_when_attempt_count_too_low() -> None:
+    """High abort rate (0.55) but only 3 attempts in the session.
+    A 1-of-3 or 2-of-3 abort rate is single-event noise — one
+    bad gap selection inflates the rate. The rule must NOT fire —
+    sample size guard prevents premature racecraft diagnosis.
+    Pin: the >=5 attempt minimum keeps the rate statistically
+    meaningful."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "passing_attempt_count": 3,
+            "passing_attempt_abort_rate": 0.55,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PASS_ABORT_RULE_ID not in fired_ids, (
+        f"{_PASS_ABORT_RULE_ID} fired on 3-attempt sample — coached "
+        f"racecraft from a sample size where rate is noise. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_pass_abort_silent_when_completion_rate_healthy() -> None:
+    """Plenty of attempts (8) but abort rate only 0.20 (driver
+    completes 80% of moves they commit to). The rule must NOT
+    fire — coaching "you bail out" to a driver who's converting
+    most attempts is noise. Pin: the rate guard prevents firing
+    on every active racer regardless of conversion. Healthy
+    aggression with high conversion is exactly what we want; the
+    rule targets the "starts-but-doesn't-finish" failure mode
+    specifically."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "passing_attempt_count": 8,
+            "passing_attempt_abort_rate": 0.20,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PASS_ABORT_RULE_ID not in fired_ids, (
+        f"{_PASS_ABORT_RULE_ID} fired on healthy-conversion "
+        f"driver — coached pass-abort behavior to a driver "
+        f"converting 80% of moves. Fired: {sorted(fired_ids)}"
     )

@@ -1,0 +1,37 @@
+id: "rc.passing_attempts.abort_rate"
+version: 1
+category: technique
+subcategory: passing_attempts
+difficulty: intermediate
+
+detection:
+  signal: passing_attempt_abort_rate
+  condition: "passing_attempt_abort_rate >= 0.40 and passing_attempt_count >= 5"
+  context:
+    must_have_channels: ["throttle", "brake", "lap_time", "lap_position"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.40 = low, 0.55 = medium, 0.70 = high"
+
+explanation_template:
+  beginner: "Out of {{passing_attempt_count}} passing attempts you bailed on {{passing_attempt_abort_rate}} of them. You're committing to moves your gut quits halfway through — that's worse than not attempting, because you lose entry speed and exit drive without completing the pass. Be more selective: only commit when the gap is real and your braking still works from there. Fewer, fuller commits."
+  intermediate: "Pass-attempt abort rate {{passing_attempt_abort_rate}} over n={{passing_attempt_count}} attempts. The signal isn't aggression — it's mid-move hesitation. Every aborted pass costs ~0.3-0.7s on the lap (lost exit drive, compromised line, defensive recovery), so a 0.50 abort rate scaled across attempts is a measurable lap-time leak. Decide before braking; if you're not committed at the brake point, don't initiate."
+  advanced: "Abort rate {{passing_attempt_abort_rate}} (n={{passing_attempt_count}}). The decision-making failure mode is 'commit-then-doubt': gap selection looked viable at lift, but braking force / closing rate updated mid-zone and the driver bailed instead of completing. Fix at the gap-selection layer (T-1 lap reads, mirror discipline, knowing the closing rate before lift) rather than at the commit layer — telling a driver 'commit harder' worsens divebombs. Targets: abort rate ≤0.25 with attempt count preserved, i.e., select fewer but finish more."
+
+prescription:
+  drill_template_id: "drill.gap_selection_pre_commit"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "passing_attempt_abort_rate"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: false
+    caveats: ["sim and real racecraft diverge most on this signal — sim drivers can risk more (no consequences), so abort rates are systematically lower in sim than real for the same skill level. The threshold may need a significant relaxation (e.g., 0.55) for real-car cohorts where cost-of-contact is real, and conversely a tighter threshold (e.g., 0.30) for sim cohorts because there's less excuse to bail. Cohort comparison is platform-specific by design."]

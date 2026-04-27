@@ -296,6 +296,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # load-bearing silencer; clean_lap_count 8 from T131 above
     # satisfies the >=5 sample-size guard.)
     "brake_point_drift_magnitude_meters_per_lap": 0.10,
+    # T135 racecraft pass-attempt signals at clean values so
+    # `rc.passing_attempts.abort_rate` stays silent. (Abort rate
+    # 0.15 is well below the >=0.40 firing threshold and is the
+    # load-bearing silencer; attempt count 8 satisfies the >=5
+    # sample-size guard.)
+    "passing_attempt_count": 8,
+    "passing_attempt_abort_rate": 0.15,
 }
 
 # A context where every braking rule should be silent — values
@@ -446,6 +453,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # shape as the firing fixture; load-bearing silencer is the
     # magnitude (0.10m/lap, well below the >=0.50m/lap threshold).
     "brake_point_drift_magnitude_meters_per_lap": 0.10,
+    # T135 racecraft pass-attempt signals at clean values so
+    # `rc.passing_attempts.abort_rate` stays silent. Same shape
+    # as the firing fixture; load-bearing silencer is the abort
+    # rate (0.15, well below the >=0.40 firing threshold).
+    "passing_attempt_count": 8,
+    "passing_attempt_abort_rate": 0.15,
 }
 
 
