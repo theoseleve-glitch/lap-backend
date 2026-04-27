@@ -40,6 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CONSISTENCY_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "consistency"
 
 _HIGH_SPREAD_RULE_ID = "co.lap_time_variance.high_spread"
+_FADE_OVER_RUN_RULE_ID = "co.lap_time_trend.fade_over_run"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -48,6 +49,11 @@ _HIGH_SPREAD_RULE_ID = "co.lap_time_variance.high_spread"
 _TEMPLATE_VARS: dict[str, Any] = {
     "lap_time_stddev_seconds_in_session": 0.80,
     "clean_lap_count_in_session": 8,
+    # T132 — lap-time trend slope (positive = getting slower).
+    # Separate signal from T074's `stint_pace_decay_seconds_per_lap`
+    # (which is strategy/tire-framing); this one is driver-fade
+    # framing across a single run.
+    "lap_time_trend_slope_seconds_per_lap": 0.18,
 }
 
 
@@ -169,5 +175,82 @@ def test_high_spread_silent_when_driver_consistent() -> None:
     assert _HIGH_SPREAD_RULE_ID not in fired_ids, (
         f"{_HIGH_SPREAD_RULE_ID} fired on consistent driver — "
         f"coached inconsistency to a smooth/repeating driver. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T132: co.lap_time_trend.fade_over_run ---------------------
+
+
+def test_fade_over_run_fires_on_combined_positive_slope_and_long_run() -> None:
+    """Both signals firing: lap-time slope +0.18s/lap (clearly
+    getting slower) AND 8 clean laps in the run (well past the
+    5-lap minimum needed to compute a meaningful trend). Pin:
+    the canonical "you fade over a stint" pattern produces an
+    insight — distinct from T074's tire-decay framing because
+    this is a driver-fatigue / concentration-drift diagnosis,
+    not a strategy / tire-management diagnosis."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lap_time_trend_slope_seconds_per_lap": 0.18,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FADE_OVER_RUN_RULE_ID in fired_ids, (
+        f"expected {_FADE_OVER_RUN_RULE_ID} to fire on combined "
+        f"positive-slope + long-run context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_fade_over_run_silent_when_run_too_short() -> None:
+    """Slope +0.18s/lap (would fire on a long run) but only 4
+    clean laps. A 4-lap trend is dominated by single-lap noise —
+    one bad lap at the end gives a false positive slope. The
+    rule must NOT fire — sample size guard prevents premature
+    fade diagnosis. Pin: the >=5 lap minimum keeps trend slopes
+    statistically meaningful."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lap_time_trend_slope_seconds_per_lap": 0.18,
+            "clean_lap_count_in_session": 4,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FADE_OVER_RUN_RULE_ID not in fired_ids, (
+        f"{_FADE_OVER_RUN_RULE_ID} fired on 4-lap run — coached "
+        f"fade from a sample size where slope is noise. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_fade_over_run_silent_when_pace_holding() -> None:
+    """Long run (8 clean laps) but slope only +0.02s/lap — the
+    driver is holding pace across the run (within noise floor).
+    The rule must NOT fire — coaching "you're fading" to a
+    driver who's actually holding pace is noise. Pin: the slope
+    guard prevents firing on every long run regardless of trend.
+    Negative-slope drivers (getting faster as they warm up) are
+    also covered by the >=0.10 firing threshold."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lap_time_trend_slope_seconds_per_lap": 0.02,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _FADE_OVER_RUN_RULE_ID not in fired_ids, (
+        f"{_FADE_OVER_RUN_RULE_ID} fired on pace-holding driver — "
+        f"coached fade to a driver actually holding pace. "
         f"Fired: {sorted(fired_ids)}"
     )

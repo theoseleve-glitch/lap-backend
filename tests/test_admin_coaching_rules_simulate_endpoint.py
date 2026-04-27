@@ -277,6 +277,12 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # sample-size guard.)
     "lap_time_stddev_seconds_in_session": 0.20,
     "clean_lap_count_in_session": 8,
+    # T132 lap-time trend signal at pace-holding value so
+    # `co.lap_time_trend.fade_over_run` stays silent. (Slope
+    # 0.02s/lap is well below the >=0.10s/lap firing threshold
+    # and is the load-bearing silencer; clean_lap_count 8 from
+    # T131 above satisfies the >=5 sample-size guard.)
+    "lap_time_trend_slope_seconds_per_lap": 0.02,
 }
 
 # A context where every braking rule should be silent — values
@@ -411,6 +417,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # the stddev (0.20s, well below the >=0.50s firing threshold).
     "lap_time_stddev_seconds_in_session": 0.20,
     "clean_lap_count_in_session": 8,
+    # T132 lap-time trend at pace-holding value so
+    # `co.lap_time_trend.fade_over_run` stays silent. Same shape
+    # as the firing fixture; load-bearing silencer is the slope
+    # (0.02s/lap, well below the >=0.10s/lap firing threshold).
+    "lap_time_trend_slope_seconds_per_lap": 0.02,
 }
 
 

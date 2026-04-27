@@ -1,0 +1,37 @@
+id: "co.lap_time_trend.fade_over_run"
+version: 1
+category: technique
+subcategory: lap_time_trend
+difficulty: beginner
+
+detection:
+  signal: lap_time_trend_slope_seconds_per_lap
+  condition: "lap_time_trend_slope_seconds_per_lap >= 0.10 and clean_lap_count_in_session >= 5"
+  context:
+    must_have_channels: ["lap_time"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.10 = low, 0.20 = medium, 0.40 = high"
+
+explanation_template:
+  beginner: "Across {{clean_lap_count_in_session}} clean laps your lap times got slower by {{lap_time_trend_slope_seconds_per_lap}}s per lap on average. That's driver fade — concentration drift, not the tires. Treat long runs as a focus drill: same braking points, same eyes-up discipline on lap 8 as on lap 2."
+  intermediate: "Lap-time slope +{{lap_time_trend_slope_seconds_per_lap}}s/lap across {{clean_lap_count_in_session}} clean laps. This is the driver-fade signal (T132), separate from T074's tire-decay framing — a positive slope on a fresh-tire run means concentration is degrading, not rubber. Practice deliberate run-length training: you only get faster at lap 8 by repeatedly being on it at lap 8."
+  advanced: "OLS slope +{{lap_time_trend_slope_seconds_per_lap}}s/lap over n={{clean_lap_count_in_session}} clean laps. Distinct diagnosis from T074 (`enduro.stint_management.pace_decay_excessive`) which targets thermal/wear; T132 is single-driver concentration fade and fires from `lap_time` alone, no tire-temp gating. Coach the focus drill independently from the tire-management drill — same surface signal, different root cause, different fix."
+
+prescription:
+  drill_template_id: "drill.long_run_focus_endurance"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "lap_time_trend_slope_seconds_per_lap"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["concentration fade transfers — it's the same focus discipline. Real drivers may show a slightly higher baseline slope due to physical fatigue (cockpit heat, g-loading, hydration), so the firing threshold may need a small relaxation (e.g., 0.15s/lap) for real-car cohorts. Sim drivers have no excuse — the slope is purely mental."]
