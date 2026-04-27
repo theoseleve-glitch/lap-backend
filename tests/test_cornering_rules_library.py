@@ -43,6 +43,7 @@ _WIDE_LINE_RULE_ID = "cs.min_speed.too_high_wide_line"
 _EARLY_TURN_RULE_ID = "cs.apex_miss.early_turn"
 _LATE_TURN_RULE_ID = "cs.apex_miss.late_turn"
 _LINE_VARIANCE_RULE_ID = "cs.line_variance.inconsistent_apex"
+_UNDERSTEER_RULE_ID = "cs.rotation_lack.understeer_mid"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -64,6 +65,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T125 — line-variance / inconsistent-apex signals.
     "apex_position_lap_stddev_pct": 0.15,
     "consecutive_clean_laps_compared": 5,
+    # T126 — mid-corner understeer signals.
+    "mid_corner_understeer_index": 0.55,
+    "steering_correction_excess_deg": 8.0,
 }
 
 
@@ -482,4 +486,82 @@ def test_line_variance_silent_when_apex_consistent() -> None:
         f"{_LINE_VARIANCE_RULE_ID} fired on consistent-apex "
         f"context — coached consistency to a consistent driver. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T126: cs.rotation_lack.understeer_mid ---------------------
+
+
+def test_understeer_fires_on_combined_understeer_and_correction() -> None:
+    """Both signals firing: understeer index 0.55 (chassis is
+    pushing) AND 8 degrees of extra steering correction
+    (driver is fighting the push). Pin: the canonical "front
+    won't bite, driver winding in more lock to compensate"
+    pattern produces an insight rather than firing on every
+    flowing-line car."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mid_corner_understeer_index": 0.55,
+            "steering_correction_excess_deg": 8.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _UNDERSTEER_RULE_ID in fired_ids, (
+        f"expected {_UNDERSTEER_RULE_ID} to fire on combined "
+        f"understeer + correction context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_understeer_silent_when_no_driver_correction() -> None:
+    """Understeer index 0.55 (chassis pushing) but driver
+    correction only 1 degree (passive — driver accepts the
+    flowing line, isn't fighting it). The rule must NOT
+    fire — passive understeer with no correction signal is
+    a deliberate flow technique, not an actionable problem.
+    Pin: the conjunction prevents flagging flowing-line
+    drivers who are content with the chassis behavior."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mid_corner_understeer_index": 0.55,
+            "steering_correction_excess_deg": 1.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _UNDERSTEER_RULE_ID not in fired_ids, (
+        f"{_UNDERSTEER_RULE_ID} fired on passive-understeer "
+        f"context — flagged a flowing-line driver. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_understeer_silent_when_chassis_neutral() -> None:
+    """Driver correction 8 degrees (lots of extra lock)
+    but understeer index only 0.10 (chassis is neutral —
+    correction was for something else: a kerb wash, a
+    momentary slide chase, a setup adjustment lap). The
+    rule must NOT fire — coaching "you have understeer"
+    when the chassis is neutral mis-attributes the cause.
+    Pin: the conjunction prevents flagging non-understeer
+    correction patterns as understeer."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mid_corner_understeer_index": 0.10,
+            "steering_correction_excess_deg": 8.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _UNDERSTEER_RULE_ID not in fired_ids, (
+        f"{_UNDERSTEER_RULE_ID} fired on neutral-chassis / "
+        f"correction context — mis-attributed correction to "
+        f"understeer. Fired: {sorted(fired_ids)}"
     )

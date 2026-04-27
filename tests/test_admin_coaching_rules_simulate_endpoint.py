@@ -243,6 +243,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # to 5 above, satisfies the rule's >=3 sample-size guard,
     # so the variance signal is the load-bearing silencer.)
     "apex_position_lap_stddev_pct": 0.04,
+    # T126 mid-corner understeer signals at neutral-chassis +
+    # no-correction values so `cs.rotation_lack.understeer_mid`
+    # stays silent.
+    "mid_corner_understeer_index": 0.10,
+    "steering_correction_excess_deg": 1.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -344,6 +349,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # to 5 above, satisfies the rule's >=3 sample-size guard,
     # so the variance signal is the load-bearing silencer.)
     "apex_position_lap_stddev_pct": 0.04,
+    # T126 mid-corner understeer signals at neutral-chassis +
+    # no-correction values so `cs.rotation_lack.understeer_mid`
+    # stays silent.
+    "mid_corner_understeer_index": 0.10,
+    "steering_correction_excess_deg": 1.0,
 }
 
 

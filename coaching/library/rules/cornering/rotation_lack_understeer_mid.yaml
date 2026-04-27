@@ -1,0 +1,37 @@
+id: "cs.rotation_lack.understeer_mid"
+version: 1
+category: technique
+subcategory: rotation_lack
+difficulty: beginner
+
+detection:
+  signal: mid_corner_understeer_index
+  condition: "mid_corner_understeer_index >= 0.40 and steering_correction_excess_deg >= 5.0"
+  context:
+    must_have_channels: ["steering", "speed", "g_lat", "yaw_rate"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.40 = low, 0.55 = medium, 0.70 = high"
+
+explanation_template:
+  beginner: "On {{corner}} the front pushed wide — understeer index {{mid_corner_understeer_index}} — and you wound in {{steering_correction_excess_deg}} degrees of extra lock trying to make it turn. More steering doesn't fix understeer; it just scrubs front grip. Ease off the throttle to load the front, or trail-brake deeper to rotate the car on entry."
+  intermediate: "Mid-corner understeer on {{corner}} — index {{mid_corner_understeer_index}}, steering correction {{steering_correction_excess_deg}}deg. Adding lock past saturation reduces front grip; the rotation has to come from weight transfer (trail-brake longer) or from reduced front load (slower entry). Diagnose against trail-brake duration before changing line."
+  advanced: "Active mid-corner understeer on {{corner}}: us_index={{mid_corner_understeer_index}}, correction={{steering_correction_excess_deg}}deg. Front-tire saturation past peak slip angle costs 5-15% lateral grip; recover by deferring rotation to entry (trail-brake) or reducing entry speed by 1-2km/h. Setup branch: check front aero / front spring rate if it persists across corner types."
+
+prescription:
+  drill_template_id: "drill.trail_brake_to_rotate"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "mid_corner_understeer_index"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim cars often understeer more reliably (deterministic tire model); real cars vary with temperature and surface — the technique correction transfers but the threshold may need adjustment in real where understeer can come and go within a stint."]
