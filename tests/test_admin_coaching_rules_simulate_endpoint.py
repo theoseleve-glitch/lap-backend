@@ -184,6 +184,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     "exit_speed": 99.0,
     "reference_exit_speed": 100.0,
     "exit_speed_delta_kmh": 1,
+    # T113 abrupt-pickup signals at modulated values so
+    # `th.abrupt_pickup.traction_break` stays silent.
+    "throttle_application_rate_pct_per_s": 150,
+    "traction_break_event_count": 0,
 }
 
 # A context where every braking rule should be silent — values
@@ -226,6 +230,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     "exit_speed": 99.0,
     "reference_exit_speed": 100.0,
     "exit_speed_delta_kmh": 1,
+    # T113 abrupt-pickup signals at modulated values so
+    # `th.abrupt_pickup.traction_break` stays silent.
+    "throttle_application_rate_pct_per_s": 150,
+    "traction_break_event_count": 0,
 }
 
 

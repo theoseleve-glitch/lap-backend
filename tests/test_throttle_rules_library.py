@@ -39,6 +39,7 @@ THROTTLE_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "throttle"
 
 _SNAP_RULE_ID = "th.early_throttle.snap_oversteer"
 _LATE_RULE_ID = "th.late_throttle.exit_speed_loss"
+_ABRUPT_RULE_ID = "th.abrupt_pickup.traction_break"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -53,6 +54,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     "exit_speed": 95.0,
     "reference_exit_speed": 100.0,
     "exit_speed_delta_kmh": 5,
+    # T113 — abrupt-pickup signals.
+    "throttle_application_rate_pct_per_s": 400,
+    "traction_break_event_count": 2,
 }
 
 
@@ -257,4 +261,74 @@ def test_late_throttle_silent_when_exit_speed_on_pace() -> None:
     assert _LATE_RULE_ID not in fired_ids, (
         f"{_LATE_RULE_ID} fired on late-throttle / on-pace exit — "
         f"floor noise. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T113: th.abrupt_pickup.traction_break ---------------------
+
+
+def test_abrupt_pickup_fires_on_combined_fast_ramp_and_break() -> None:
+    """Both signals firing: throttle ramped at 400%/s (full
+    pedal in 250ms — binary on/off, not modulated), and at
+    least 2 traction-break events occurred. Pin: the canonical
+    "stomped on it" pattern produces an insight."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_application_rate_pct_per_s": 400,
+            "traction_break_event_count": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _ABRUPT_RULE_ID in fired_ids, (
+        f"expected {_ABRUPT_RULE_ID} to fire on combined "
+        f"fast-ramp + traction-break, got {sorted(fired_ids)}"
+    )
+
+
+def test_abrupt_pickup_silent_when_throttle_modulated() -> None:
+    """Throttle ramp at 150%/s (modulated — full pedal in
+    ~660ms, smooth pickup). Even with traction-break events
+    (could be a slick spot, kerb, setup), the rule must NOT
+    fire — modulated drivers should not be flagged for surface-
+    or setup-induced grip loss."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_application_rate_pct_per_s": 150,
+            "traction_break_event_count": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _ABRUPT_RULE_ID not in fired_ids, (
+        f"{_ABRUPT_RULE_ID} fired on modulated-pickup / break "
+        f"context — flagged a smooth driver for surface grip loss. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_abrupt_pickup_silent_when_no_traction_break() -> None:
+    """Throttle ramp at 400%/s (abrupt), but zero traction-break
+    events. Rule must NOT fire — a fast ramp on a high-grip car
+    or low-power class isn't a problem if the chassis handles it.
+    Pin: the conjunction is what makes this an actionable rule
+    rather than "anyone with quick feet"."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_application_rate_pct_per_s": 400,
+            "traction_break_event_count": 0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _ABRUPT_RULE_ID not in fired_ids, (
+        f"{_ABRUPT_RULE_ID} fired on abrupt-but-clean pickup — "
+        f"flagged a quick driver who got away with it. "
+        f"Fired: {sorted(fired_ids)}"
     )

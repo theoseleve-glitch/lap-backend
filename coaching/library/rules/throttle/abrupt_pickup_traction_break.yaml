@@ -1,0 +1,37 @@
+id: "th.abrupt_pickup.traction_break"
+version: 1
+category: technique
+subcategory: abrupt_pickup
+difficulty: beginner
+
+detection:
+  signal: throttle_application_rate_pct_per_s
+  condition: "throttle_application_rate_pct_per_s > 300 and traction_break_event_count >= 1"
+  context:
+    must_have_channels: ["throttle", "wheel_speed", "g_lat"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 300 = low, 500 = medium, 700 = high"
+
+explanation_template:
+  beginner: "On {{corner}} you went from coasting to full throttle in under a third of a second ({{throttle_application_rate_pct_per_s}}%/s) and the wheels broke loose {{traction_break_event_count}} time(s). Squeeze, don't stomp — meter the pedal in over half a second."
+  intermediate: "Binary on-off pickup on {{corner}} — application rate {{throttle_application_rate_pct_per_s}}%/s with {{traction_break_event_count}} traction-break event(s). Modulated ramp target is 100-200%/s; ride the throttle in a curve, not a step."
+  advanced: "Abrupt-pickup event on {{corner}}: rate={{throttle_application_rate_pct_per_s}}%/s, breaks={{traction_break_event_count}}. Map a 400-700ms ramp to peak throttle keyed off steering-unwind derivative; suppress traction-break events to ≤0 over next 3 sessions."
+
+prescription:
+  drill_template_id: "drill.throttle_modulation_curve"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "throttle_application_rate_pct_per_s"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim pedals are travel-only; real throttle pedals carry load feedback through the foot, so modulation is easier to learn in real cars and harder to translate back to sim"]
