@@ -909,3 +909,56 @@ class IRacingCalendarEntry(Base):
     )
     kind: Mapped[str] = mapped_column(String(32))
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StrategyTemplate(Base):
+    """T107 — driver-scoped library of named StrategyPlan-shaped
+    templates the user saves for reuse ("my Le Mans strategy").
+
+    Distinct from T096's StrategyPlan: the plan is per-session
+    (UNIQUE on session_id), templates are per-driver and not
+    bound to any session — they're the source intent users copy
+    from when seeding a new race plan. The shape is identical
+    (planned_stints, planned_fuel_liters, planned_pit_laps) plus
+    a `name` for identification.
+
+    UNIQUE(driver_id, name): a user can't accumulate ambiguous
+    duplicates of their named playbook. Per-driver, not global,
+    so two users can each have a "Spa 24h" template.
+
+    Cascade delete from driver_profiles: GDPR right-to-erasure
+    on a driver purges their template library with them.
+
+    planned_pit_laps as JSON list — cross-dialect (SQLite tests +
+    Postgres prod), read whole rather than queried into.
+    """
+
+    __tablename__ = "strategy_templates"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid6.uuid7
+    )
+    driver_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("driver_profiles.id", ondelete="CASCADE"),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    planned_stints: Mapped[int] = mapped_column(Integer)
+    planned_fuel_liters: Mapped[float] = mapped_column(Float)
+    planned_pit_laps: Mapped[list[int]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "driver_id", "name",
+            name="uq_strategy_templates_driver_id_name",
+        ),
+    )

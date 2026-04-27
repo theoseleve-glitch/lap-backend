@@ -28,6 +28,9 @@ from lap_schemas.v1 import (
     StrategyHistoryList,
     StrategyPlan,
     StrategyPlanCreate,
+    StrategyTemplate,
+    StrategyTemplateCreate,
+    StrategyTemplateList,
     StrategyTimelineResponse,
     StrategyVisualization,
 )
@@ -36,7 +39,8 @@ from lap_schemas.v1.coaching_insight import CoachingInsight
 from lap_schemas.v1.session import SessionStatus
 from lap_schemas.v1.weakness_episode import WeaknessEpisode as WeaknessEpisodeSchema
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import (
@@ -59,6 +63,7 @@ from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
 from infra.orm import StrategyEvent as StrategyEventRow
 from infra.orm import StrategyPlan as StrategyPlanRow
+from infra.orm import StrategyTemplate as StrategyTemplateRow
 from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
 from infra.orm import WeaknessEpisode as WeaknessEpisodeRow
@@ -886,4 +891,144 @@ async def get_driver_strategy_history(
         for plan, session in rows
     )
     return StrategyHistoryList(entries=entries)
+
+
+def _template_to_schema(row: StrategyTemplateRow) -> StrategyTemplate:
+    return StrategyTemplate(
+        id=row.id,
+        created_at=row.created_at,
+        name=row.name,
+        planned_stints=row.planned_stints,
+        planned_fuel_liters=row.planned_fuel_liters,
+        planned_pit_laps=tuple(row.planned_pit_laps),
+    )
+
+
+@driver_router.post(
+    "/strategy/templates",
+    status_code=status.HTTP_201_CREATED,
+    response_model=StrategyTemplate,
+    responses={409: {"description": "duplicate_template_name"}},
+)
+async def create_strategy_template(
+    body: StrategyTemplateCreate,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StrategyTemplate:
+    """T107 — save a named StrategyPlan-shaped template for the
+    caller. UNIQUE(driver_id, name) → 409 on duplicate name within
+    the same driver. Per-driver, not global, so two users can each
+    have a "Spa 24h" template."""
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="driver_not_found",
+        )
+    row = StrategyTemplateRow(
+        driver_id=profile.id,
+        name=body.name,
+        planned_stints=body.planned_stints,
+        planned_fuel_liters=body.planned_fuel_liters,
+        planned_pit_laps=list(body.planned_pit_laps),
+    )
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="duplicate_template_name",
+        ) from exc
+    await db.refresh(row)
+    return _template_to_schema(row)
+
+
+@driver_router.get(
+    "/strategy/templates",
+    response_model=StrategyTemplateList,
+)
+async def list_strategy_templates(
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StrategyTemplateList:
+    """T107 — list the caller's saved templates ordered by
+    created_at DESC. Driver-scoped: only the caller's templates
+    appear (RLS via the driver_id WHERE clause)."""
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        return StrategyTemplateList(entries=())
+
+    rows = (
+        await db.execute(
+            select(StrategyTemplateRow)
+            .where(StrategyTemplateRow.driver_id == profile.id)
+            .order_by(StrategyTemplateRow.created_at.desc())
+        )
+    ).scalars().all()
+
+    return StrategyTemplateList(
+        entries=tuple(_template_to_schema(r) for r in rows),
+    )
+
+
+@driver_router.delete(
+    "/strategy/templates/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"description": "template_not_found"}},
+)
+async def delete_strategy_template(
+    template_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """T107 — delete the caller's named template. 404 status
+    parity for unknown vs not-owned: prevents enumeration of
+    other drivers' template ids via timing or status."""
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="template_not_found",
+        )
+    row = (
+        await db.execute(
+            select(StrategyTemplateRow).where(
+                StrategyTemplateRow.id == template_id,
+                StrategyTemplateRow.driver_id == profile.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="template_not_found",
+        )
+    await db.execute(
+        delete(StrategyTemplateRow).where(
+            StrategyTemplateRow.id == template_id
+        )
+    )
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
