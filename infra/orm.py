@@ -741,6 +741,17 @@ class TargetEvent(Base):
     )
     competitive_weight: Mapped[float] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # T094 — per-event idempotency for the 24h/1h email reminders.
+    # List of window labels already dispatched (e.g. ["24h"] after
+    # the 24-hour-out reminder fires). The hourly Celery beat
+    # filters on this so re-runs and clock-skew "still in the
+    # window" beats don't double-send.
+    notifications_sent: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
 
 
 class IRacingCalendarEntry(Base):

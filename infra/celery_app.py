@@ -106,6 +106,15 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.weekly_iracing_calendar_refresh",
         "schedule": crontab(hour=8, minute=0, day_of_week=1),
     },
+    # T094 (sprint2) — hourly event reminder dispatch at minute 0.
+    # The pure-domain windowing function handles ±30-min tolerance
+    # so each event gets exactly one fire per window (24h, 1h).
+    # Idempotent via target_events.notifications_sent so a missed
+    # hour or a clock-skew "still in window" tick never double-sends.
+    "hourly-event-notifications": {
+        "task": "infra.celery_app.hourly_event_notifications",
+        "schedule": crontab(minute=0),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -598,3 +607,36 @@ def weekly_iracing_calendar_refresh() -> str:
         "iracing_calendar_refresh.completed", entries=result
     )
     return f"ok={result}"
+
+
+async def _run_event_notifications() -> int:
+    """T094 cron body: hourly sweep for events at the 24h or 1h
+    pre-event windows. Dispatches via the configured email
+    sender; persists window labels into
+    target_events.notifications_sent so subsequent beats stay
+    silent."""
+    from datetime import UTC, datetime
+
+    from infra.email import make_email_sender
+    from infra.event_notifications_runner import run_event_notifications
+
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        return await run_event_notifications(
+            session_factory=factory,
+            sender=make_email_sender(),
+            now=datetime.now(UTC),
+        )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.hourly_event_notifications")  # type: ignore[untyped-decorator]
+def hourly_event_notifications() -> str:
+    """Beat-triggered hourly at minute 0. Dispatches 24h/1h
+    pre-event reminders for all driver-pinned TargetEvents."""
+    sent = asyncio.run(_run_event_notifications())
+    logger.info("event_notifications.run", sent=sent)
+    return f"sent={sent}"
