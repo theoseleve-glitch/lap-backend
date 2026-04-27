@@ -1,0 +1,37 @@
+id: "th.late_throttle.exit_speed_loss"
+version: 1
+category: technique
+subcategory: late_throttle
+difficulty: beginner
+
+detection:
+  signal: throttle_pct_at_apex
+  condition: "throttle_pct_at_apex < 0.15 and exit_speed < reference_exit_speed * 0.95"
+  context:
+    must_have_channels: ["throttle", "speed", "steering_angle"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.95 = low, 0.92 = medium, 0.88 = high"
+
+explanation_template:
+  beginner: "On {{corner}} you didn't pick up the throttle until past the apex (only {{throttle_pct_at_apex}} at apex), and exit speed dropped {{exit_speed_delta_kmh}} km/h below the reference. You're waiting too long — start squeezing as soon as the steering wheel begins unwinding."
+  intermediate: "Late-throttle exit deficit on {{corner}} — apex throttle = {{throttle_pct_at_apex}}, exit_speed = {{exit_speed}} vs ref {{reference_exit_speed}} ({{exit_speed_delta_kmh}} km/h short). Commit the throttle on the unwind, not after wheel-straight."
+  advanced: "Late-throttle event on {{corner}}: throttle_pct_at_apex={{throttle_pct_at_apex}}, exit_speed={{exit_speed}}, ref={{reference_exit_speed}}, delta={{exit_speed_delta_kmh}} km/h. Onset target: full-throttle-by 50ms after peak yaw rate decays."
+
+prescription:
+  drill_template_id: "drill.early_throttle_unwind_pickup"
+  expected_gain_kmh: "2-5"
+  success_condition:
+    metric: "exit_speed"
+    comparison: "gte"
+    target_pct: 0.97
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["real grip ramps in slower than sim; in real cars wait 30-50ms longer than sim before full-pedal so the rear stays loaded — relative timing transfers, absolute does not"]

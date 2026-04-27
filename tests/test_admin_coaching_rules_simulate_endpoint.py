@@ -179,6 +179,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # braking-focused fixture.
     "throttle_pct_at_apex": 0.20,
     "peak_rear_slip_angle_deg": 3.0,
+    # T112 late-throttle signals at on-pace values so
+    # `th.late_throttle.exit_speed_loss` stays silent.
+    "exit_speed": 99.0,
+    "reference_exit_speed": 100.0,
+    "exit_speed_delta_kmh": 1,
 }
 
 # A context where every braking rule should be silent — values
@@ -216,6 +221,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # `th.early_throttle.snap_oversteer` stays silent.
     "throttle_pct_at_apex": 0.20,
     "peak_rear_slip_angle_deg": 3.0,
+    # T112 late-throttle signals at on-pace values so
+    # `th.late_throttle.exit_speed_loss` stays silent.
+    "exit_speed": 99.0,
+    "reference_exit_speed": 100.0,
+    "exit_speed_delta_kmh": 1,
 }
 
 

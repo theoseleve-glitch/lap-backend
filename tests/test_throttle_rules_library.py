@@ -38,6 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 THROTTLE_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "throttle"
 
 _SNAP_RULE_ID = "th.early_throttle.snap_oversteer"
+_LATE_RULE_ID = "th.late_throttle.exit_speed_loss"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -48,6 +49,10 @@ _TEMPLATE_VARS: dict[str, Any] = {
     "corner": "Turn 4",
     "throttle_pct_at_apex": 0.55,
     "peak_rear_slip_angle_deg": 8.5,
+    # T112 — late-throttle signals.
+    "exit_speed": 95.0,
+    "reference_exit_speed": 100.0,
+    "exit_speed_delta_kmh": 5,
 }
 
 
@@ -175,3 +180,81 @@ def test_snap_oversteer_silent_when_both_signals_quiet() -> None:
     )
     fired_ids = {ins.rule_id for ins in insights}
     assert _SNAP_RULE_ID not in fired_ids
+
+
+# -- T112: th.late_throttle.exit_speed_loss --------------------
+
+
+def test_late_throttle_fires_on_combined_late_and_slow_exit() -> None:
+    """Both signals firing: throttle at apex = 0.10 (driver
+    coasted past the apex without committing), exit speed = 92
+    vs reference 100 (8% deficit, well below the 95% threshold).
+    Pin: the canonical "waited too long, lost the run" pattern
+    produces an insight."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_pct_at_apex": 0.10,
+            "peak_rear_slip_angle_deg": 3.0,
+            "exit_speed": 92.0,
+            "reference_exit_speed": 100.0,
+            "exit_speed_delta_kmh": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_RULE_ID in fired_ids, (
+        f"expected {_LATE_RULE_ID} to fire on late-throttle / "
+        f"slow-exit context, got {sorted(fired_ids)}"
+    )
+
+
+def test_late_throttle_silent_when_throttle_committed_early() -> None:
+    """Throttle at apex = 0.50 (committed early), exit speed
+    still down at 92 (8% deficit — could be a setup or grip
+    issue). The rule must NOT fire — committing early but
+    losing exit is a different problem (grip, setup, line)."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_pct_at_apex": 0.50,
+            "peak_rear_slip_angle_deg": 3.0,
+            "exit_speed": 92.0,
+            "reference_exit_speed": 100.0,
+            "exit_speed_delta_kmh": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_RULE_ID not in fired_ids, (
+        f"{_LATE_RULE_ID} fired on early-throttle / slow-exit — "
+        f"mis-attributed grip or setup issue to throttle timing. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_late_throttle_silent_when_exit_speed_on_pace() -> None:
+    """Throttle at apex = 0.10 (late), but exit speed = 99 vs
+    reference 100 (within 1% — driver "wasted" some opportunity
+    but didn't actually lose meaningful time). The rule must NOT
+    fire — coaching every quiet apex would flood drivers with
+    non-actionable noise on flowing-line corners."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_pct_at_apex": 0.10,
+            "peak_rear_slip_angle_deg": 3.0,
+            "exit_speed": 99.0,
+            "reference_exit_speed": 100.0,
+            "exit_speed_delta_kmh": 1,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_RULE_ID not in fired_ids, (
+        f"{_LATE_RULE_ID} fired on late-throttle / on-pace exit — "
+        f"floor noise. Fired: {sorted(fired_ids)}"
+    )
