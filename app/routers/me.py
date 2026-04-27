@@ -19,12 +19,15 @@ from lap_schemas.v1 import (
 )
 from lap_schemas.v1.driver_profile import SkillLevel
 from lap_schemas.v1.user import SubscriptionStatus
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from app.flags import is_enabled
 from infra.orm import DriverProfile as DriverProfileRow
+from infra.orm import Organization as OrganizationRow
+from infra.orm import OrganizationMember as OrganizationMemberRow
 from infra.orm import Session as SessionRow
 from infra.orm import User as UserRow
 
@@ -211,3 +214,56 @@ async def export_me(
             ),
         },
     )
+
+
+# T195 — GDPR Article 17 right-to-erasure. Deletes the caller's
+# user-derived data and the User row itself. Schema-level
+# CASCADE on driver_profiles.user_id and organization_members
+# .user_id handles the cascade in production with FK enforcement
+# on; we do explicit deletes here too so SQLite tests (FK PRAGMA
+# off by default) verify the same shape — same pattern as
+# delete_organization in app/routers/organizations.py.
+#
+# Why a 409 block when the caller admins an org: Organization
+# .admin_user_id has NO cascade by design (orphaning members +
+# billing is worse than blocking). The user must transfer admin
+# first, then retry the delete.
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    is_admin_of_org = (
+        await db.execute(
+            select(OrganizationRow.id)
+            .where(OrganizationRow.admin_user_id == user.id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if is_admin_of_org is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ErrorCode.CANNOT_DELETE_ORG_ADMIN,
+        )
+
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if profile is not None:
+        await db.execute(
+            delete(SessionRow).where(SessionRow.driver_id == profile.id)
+        )
+        await db.delete(profile)
+
+    await db.execute(
+        delete(OrganizationMemberRow).where(
+            OrganizationMemberRow.user_id == user.id
+        )
+    )
+    await db.delete(user)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -83,6 +83,12 @@ class ErrorCode(StrEnum):
     ALREADY_ACCEPTED = "already_accepted"
     INVITATION_EXPIRED = "invitation_expired"
     CANNOT_REMOVE_ADMIN = "cannot_remove_admin"
+    # T195 — DELETE /api/v1/me blocks if the caller still admins
+    # an org. Schema FK on organizations.admin_user_id is non-
+    # cascade by design (orphaning members + billing would be
+    # worse than blocking) — this code surfaces the block to the
+    # client so they can transfer admin first.
+    CANNOT_DELETE_ORG_ADMIN = "cannot_delete_org_admin"
 
     # -- billing / Stripe -----------------------------------------
     STRIPE_PRICE_NOT_CONFIGURED = "stripe_price_not_configured"
