@@ -1,10 +1,14 @@
 """Tiered rate-limit middleware.
 
-Three independent buckets:
+Four independent buckets:
 
 - auth: per-IP. Applied to /api/v1/auth/*. Pre-T014.
 - read: per-user (Authorization-header keyed; IP fallback). Applied
-  to all of /api/v1/* except auth and the ingest path. T014.
+  to GET on /api/v1/* (except auth). T014, narrowed by T182.
+- write: per-user. Applied to POST/PATCH/PUT/DELETE on /api/v1/*
+  (except auth and the ingest path). Different load profile from
+  read so it gets its own bucket — a chatty UI poll loop on GETs
+  must not starve the same user's ability to save state. T182.
 - ingest: per-user. Applied to POST /api/v1/sessions/ingest only.
   Window is hours, not minutes — uploads are heavy. T014.
 
@@ -35,6 +39,7 @@ API_V1_PREFIX = "/api/v1/"
 
 _auth_limiter: RateLimiter | None = None
 _read_limiter: RateLimiter | None = None
+_write_limiter: RateLimiter | None = None
 _ingest_limiter: RateLimiter | None = None
 
 
@@ -51,6 +56,12 @@ def set_read_rate_limiter(limiter: RateLimiter) -> None:
     _read_limiter = limiter
 
 
+def set_write_rate_limiter(limiter: RateLimiter) -> None:
+    """Install the write-tier limiter (T182)."""
+    global _write_limiter
+    _write_limiter = limiter
+
+
 def set_ingest_rate_limiter(limiter: RateLimiter) -> None:
     """Install the ingest-tier limiter (T014)."""
     global _ingest_limiter
@@ -60,9 +71,10 @@ def set_ingest_rate_limiter(limiter: RateLimiter) -> None:
 def reset_rate_limiter() -> None:
     """Clear ALL installed limiters so the middleware bypasses
     enforcement. Used by tests to isolate state between cases."""
-    global _auth_limiter, _read_limiter, _ingest_limiter
+    global _auth_limiter, _read_limiter, _write_limiter, _ingest_limiter
     _auth_limiter = None
     _read_limiter = None
+    _write_limiter = None
     _ingest_limiter = None
 
 
@@ -98,11 +110,21 @@ def _user_key(request: Request) -> str:
     return f"ip:{_client_ip(request)}"
 
 
+_WRITE_METHODS = frozenset({"POST", "PATCH", "PUT", "DELETE"})
+
+
 def _resolve_tier(
     request: Request,
 ) -> tuple[RateLimiter | None, str]:
     """Pick the (limiter, key) for this request. Returns (None, "")
-    when no tier applies — the middleware short-circuits."""
+    when no tier applies — the middleware short-circuits.
+
+    Tier selection (most-specific to least):
+      auth path   → auth tier (per-IP)
+      ingest path → ingest tier (per-user)
+      /api/v1/*   → write tier if method mutates, else read tier
+      anything else (health, metrics, /docs) → no limiter
+    """
     path = request.url.path
     if path.startswith(AUTH_PATH_PREFIX):
         if _auth_limiter is None:
@@ -113,6 +135,10 @@ def _resolve_tier(
             return None, ""
         return _ingest_limiter, f"ingest:{_user_key(request)}"
     if path.startswith(API_V1_PREFIX):
+        if request.method in _WRITE_METHODS:
+            if _write_limiter is None:
+                return None, ""
+            return _write_limiter, f"write:{_user_key(request)}"
         if _read_limiter is None:
             return None, ""
         return _read_limiter, f"read:{_user_key(request)}"
