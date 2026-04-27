@@ -222,6 +222,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # values so `cs.min_speed.too_low_late_apex` stays silent.
     "min_corner_speed_deficit_pct": 0.01,
     "apex_position_pct_through_corner": 0.50,
+    # T122 cornering / wide-line signals at on-pace + tight-
+    # apex values so `cs.min_speed.too_high_wide_line` stays
+    # silent.
+    "min_corner_speed_excess_pct": 0.01,
+    "apex_lateral_offset_m": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -302,6 +307,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # values so `cs.min_speed.too_low_late_apex` stays silent.
     "min_corner_speed_deficit_pct": 0.01,
     "apex_position_pct_through_corner": 0.50,
+    # T122 cornering / wide-line signals at on-pace + tight-
+    # apex values so `cs.min_speed.too_high_wide_line` stays
+    # silent.
+    "min_corner_speed_excess_pct": 0.01,
+    "apex_lateral_offset_m": 0.10,
 }
 
 

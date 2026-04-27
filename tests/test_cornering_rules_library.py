@@ -39,6 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CORNERING_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "cornering"
 
 _LATE_APEX_RULE_ID = "cs.min_speed.too_low_late_apex"
+_WIDE_LINE_RULE_ID = "cs.min_speed.too_high_wide_line"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -48,6 +49,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     "corner": "Turn 4",
     "min_corner_speed_deficit_pct": 0.08,
     "apex_position_pct_through_corner": 0.70,
+    # T122 — too-high min speed / wide-line signals.
+    "min_corner_speed_excess_pct": 0.07,
+    "apex_lateral_offset_m": 0.80,
 }
 
 
@@ -165,5 +169,80 @@ def test_late_apex_silent_when_apex_on_time() -> None:
     assert _LATE_APEX_RULE_ID not in fired_ids, (
         f"{_LATE_APEX_RULE_ID} fired on slow-but-on-time-apex "
         f"context — mis-attributed speed deficit to apex placement. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T122: cs.min_speed.too_high_wide_line ---------------------
+
+
+def test_wide_line_fires_on_combined_speed_excess_and_offset() -> None:
+    """Both signals firing: min-speed excess 0.07 (7% above
+    reference — carrying too much) AND lateral offset of 0.80m
+    from optimal apex (well past the 0.50m wide-of-apex floor).
+    Pin: the canonical "carried too much speed and got pushed
+    wide" pattern produces an insight rather than firing on
+    every fast-through-the-corner driver."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "min_corner_speed_excess_pct": 0.07,
+            "apex_lateral_offset_m": 0.80,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WIDE_LINE_RULE_ID in fired_ids, (
+        f"expected {_WIDE_LINE_RULE_ID} to fire on combined "
+        f"speed-excess + wide-offset context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_wide_line_silent_when_speed_on_pace() -> None:
+    """Lateral offset 0.80m (wide line) but speed excess only
+    0.01 (driver is on a wide line but not carrying excess
+    speed — could be a deliberate wide entry for traffic, an
+    overtake setup, or a defensive line). The rule must NOT
+    fire — wide line without excess speed isn't a mistake.
+    Pin: the conjunction prevents flagging tactical wide
+    lines as min-speed-too-high errors."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "min_corner_speed_excess_pct": 0.01,
+            "apex_lateral_offset_m": 0.80,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WIDE_LINE_RULE_ID not in fired_ids, (
+        f"{_WIDE_LINE_RULE_ID} fired on wide-line / on-pace "
+        f"context — flagged a tactical wide line. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_wide_line_silent_when_on_proper_line() -> None:
+    """Speed excess 0.07 (driver IS faster) but apex offset
+    only 0.10m (on the proper line). The rule must NOT fire —
+    a faster driver on the right line is just better, not
+    wrong. Pin: the conjunction prevents flagging better
+    drivers as making min-speed errors."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "min_corner_speed_excess_pct": 0.07,
+            "apex_lateral_offset_m": 0.10,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WIDE_LINE_RULE_ID not in fired_ids, (
+        f"{_WIDE_LINE_RULE_ID} fired on faster-but-on-line "
+        f"context — flagged a faster driver as wrong. "
         f"Fired: {sorted(fired_ids)}"
     )
