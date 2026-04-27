@@ -303,6 +303,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # sample-size guard.)
     "passing_attempt_count": 8,
     "passing_attempt_abort_rate": 0.15,
+    # T136 defensive-line signals at gap-aware-defender values so
+    # `rc.defensive_line.too_often` stays silent. (Share 0.20
+    # is well below the >=0.40 firing threshold and is the
+    # load-bearing silencer; cost 0.10s also satisfies the silent
+    # path independently.)
+    "defensive_line_lap_share": 0.20,
+    "lap_time_loss_per_defensive_lap_seconds": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -459,6 +466,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # rate (0.15, well below the >=0.40 firing threshold).
     "passing_attempt_count": 8,
     "passing_attempt_abort_rate": 0.15,
+    # T136 defensive-line signals at gap-aware-defender values so
+    # `rc.defensive_line.too_often` stays silent. Same shape as
+    # the firing fixture; load-bearing silencer is the share
+    # (0.20, well below the >=0.40 firing threshold).
+    "defensive_line_lap_share": 0.20,
+    "lap_time_loss_per_defensive_lap_seconds": 0.10,
 }
 
 

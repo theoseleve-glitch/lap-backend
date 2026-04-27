@@ -44,6 +44,7 @@ _FADE_OVER_RUN_RULE_ID = "co.lap_time_trend.fade_over_run"
 _T1_VOLATILE_RULE_ID = "co.sector_consistency.t1_volatile"
 _BRAKE_DRIFT_RULE_ID = "co.braking_point_drift.over_run"
 _PASS_ABORT_RULE_ID = "rc.passing_attempts.abort_rate"
+_DEFENSIVE_LINE_RULE_ID = "rc.defensive_line.too_often"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -75,6 +76,13 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # of mid-move.
     "passing_attempt_count": 8,
     "passing_attempt_abort_rate": 0.55,
+    # T136 — defensive-line overuse signals. Frequency-and-cost
+    # conjunction: defending often AND each defensive lap costs
+    # significant time. Free defensive lines (low cost) and
+    # rare-but-expensive ones are both fine; the failure mode
+    # is the combination.
+    "defensive_line_lap_share": 0.55,
+    "lap_time_loss_per_defensive_lap_seconds": 0.45,
 }
 
 
@@ -507,4 +515,84 @@ def test_pass_abort_silent_when_completion_rate_healthy() -> None:
         f"{_PASS_ABORT_RULE_ID} fired on healthy-conversion "
         f"driver — coached pass-abort behavior to a driver "
         f"converting 80% of moves. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T136: rc.defensive_line.too_often -------------------------
+
+
+def test_defensive_line_fires_on_combined_high_share_and_high_cost() -> None:
+    """Both signals firing: defensive line on 55% of laps (well
+    above the 0.40 firing threshold — defending often) AND each
+    defensive lap costs 0.45s (well above the 0.30s firing
+    threshold — defending is expensive). Pin: the canonical
+    "you defend constantly and it costs you" pattern produces
+    an insight — distinct from a tactical defender whose
+    defensive lines are essentially free."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "defensive_line_lap_share": 0.55,
+            "lap_time_loss_per_defensive_lap_seconds": 0.45,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _DEFENSIVE_LINE_RULE_ID in fired_ids, (
+        f"expected {_DEFENSIVE_LINE_RULE_ID} to fire on combined "
+        f"high-share + high-cost context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_defensive_line_silent_when_defenses_are_cheap() -> None:
+    """High share (0.55, defending often) but each defensive lap
+    costs only 0.10s — the defending is essentially free. Could
+    be that the car behind is much slower, or the defensive
+    geometry on this circuit doesn't sacrifice exit. The rule
+    must NOT fire — coaching "stop defending so much" when
+    defending is free is wrong; that driver is doing exactly
+    the right tactical thing. Pin: the cost guard separates
+    expensive over-defending from free tactical defending."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "defensive_line_lap_share": 0.55,
+            "lap_time_loss_per_defensive_lap_seconds": 0.10,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _DEFENSIVE_LINE_RULE_ID not in fired_ids, (
+        f"{_DEFENSIVE_LINE_RULE_ID} fired on cheap-defending "
+        f"driver — coached against tactically-correct defending. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_defensive_line_silent_when_defenses_are_rare() -> None:
+    """High per-lap cost (0.45s) but only 15% of laps are
+    defensive — a few expensive defenses across the session, not
+    a pattern. The rule must NOT fire — every racer occasionally
+    defends and pays for it; coaching against rare defending
+    would target tactically-necessary moves (e.g., last-lap
+    podium defense). Pin: the share guard prevents firing on
+    one-off expensive defenses that are part of normal
+    racecraft."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "defensive_line_lap_share": 0.15,
+            "lap_time_loss_per_defensive_lap_seconds": 0.45,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _DEFENSIVE_LINE_RULE_ID not in fired_ids, (
+        f"{_DEFENSIVE_LINE_RULE_ID} fired on rare-defending "
+        f"driver — coached against occasional necessary defending. "
+        f"Fired: {sorted(fired_ids)}"
     )
