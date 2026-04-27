@@ -200,6 +200,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `th.staircase_pattern.uneven_modulation` stays silent.
     "throttle_step_count_in_pickup": 1,
     "throttle_pickup_smoothness_index": 0.85,
+    # T117 early-full / pre-apex signals at apex-timed values so
+    # `th.early_full.before_apex` stays silent.
+    "pre_apex_throttle_peak_pct": 0.50,
+    "full_throttle_reached_pct_before_apex": 0.02,
 }
 
 # A context where every braking rule should be silent — values
@@ -258,6 +262,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # `th.staircase_pattern.uneven_modulation` stays silent.
     "throttle_step_count_in_pickup": 1,
     "throttle_pickup_smoothness_index": 0.85,
+    # T117 early-full / pre-apex signals at apex-timed values so
+    # `th.early_full.before_apex` stays silent.
+    "pre_apex_throttle_peak_pct": 0.50,
+    "full_throttle_reached_pct_before_apex": 0.02,
 }
 
 

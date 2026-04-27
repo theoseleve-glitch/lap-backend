@@ -43,6 +43,7 @@ _ABRUPT_RULE_ID = "th.abrupt_pickup.traction_break"
 _PARTIAL_RULE_ID = "th.partial_throttle.mid_corner"
 _LIFT_RULE_ID = "th.throttle_lift.mid_corner"
 _STAIRCASE_RULE_ID = "th.staircase_pattern.uneven_modulation"
+_EARLY_FULL_RULE_ID = "th.early_full.before_apex"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -69,6 +70,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T116 — staircase / uneven-modulation signals.
     "throttle_step_count_in_pickup": 4,
     "throttle_pickup_smoothness_index": 0.30,
+    # T117 — early-full / pre-apex throttle signals.
+    "pre_apex_throttle_peak_pct": 0.98,
+    "full_throttle_reached_pct_before_apex": 0.20,
 }
 
 
@@ -562,5 +566,78 @@ def test_staircase_silent_when_smoothness_high() -> None:
     assert _STAIRCASE_RULE_ID not in fired_ids, (
         f"{_STAIRCASE_RULE_ID} fired on high-step / smooth "
         f"context — flagged a smooth ramp as stepped. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T117: th.early_full.before_apex ---------------------------
+
+
+def test_early_full_fires_on_combined_floored_and_pre_apex() -> None:
+    """Both signals firing: throttle reached 98% (effectively
+    floored) AND that happened 20% of corner length BEFORE the
+    apex point. Pin: the canonical "wide-open before the corner
+    is finished" geometric error produces an insight even when
+    the chassis tolerated it (no slip, no traction-break)."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pre_apex_throttle_peak_pct": 0.98,
+            "full_throttle_reached_pct_before_apex": 0.20,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EARLY_FULL_RULE_ID in fired_ids, (
+        f"expected {_EARLY_FULL_RULE_ID} to fire on combined "
+        f"floored + pre-apex context, got {sorted(fired_ids)}"
+    )
+
+
+def test_early_full_silent_when_throttle_below_full() -> None:
+    """Throttle peak of 0.80 in the pre-apex zone (driver was
+    aggressive but never quite floored), reached 20% before the
+    apex. The rule must NOT fire — 80% throttle pre-apex is fine
+    technique on many corners (especially fast sweepers); the
+    rule targets the unambiguous "wide-open" mistake. Pin: the
+    conjunction prevents flagging brave-but-not-stupid drivers."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pre_apex_throttle_peak_pct": 0.80,
+            "full_throttle_reached_pct_before_apex": 0.20,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EARLY_FULL_RULE_ID not in fired_ids, (
+        f"{_EARLY_FULL_RULE_ID} fired on 80%-peak pre-apex "
+        f"context — flagged an aggressive-but-modulating driver. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_early_full_silent_when_full_essentially_at_apex() -> None:
+    """Throttle reached 98% (floored) but only 3% of corner
+    length before the apex (essentially AT the apex — perfect
+    timing). The rule must NOT fire — going full at the apex is
+    correct technique; the rule only flags meaningfully-early
+    application. Pin: the conjunction prevents flagging perfect
+    apex-timed throttle as 'too early'."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pre_apex_throttle_peak_pct": 0.98,
+            "full_throttle_reached_pct_before_apex": 0.03,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EARLY_FULL_RULE_ID not in fired_ids, (
+        f"{_EARLY_FULL_RULE_ID} fired on full-at-apex context "
+        f"— flagged correct apex-timed throttle as too early. "
         f"Fired: {sorted(fired_ids)}"
     )

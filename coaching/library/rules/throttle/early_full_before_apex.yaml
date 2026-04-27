@@ -1,0 +1,37 @@
+id: "th.early_full.before_apex"
+version: 1
+category: technique
+subcategory: early_full
+difficulty: beginner
+
+detection:
+  signal: full_throttle_reached_pct_before_apex
+  condition: "pre_apex_throttle_peak_pct >= 0.95 and full_throttle_reached_pct_before_apex >= 0.10"
+  context:
+    must_have_channels: ["throttle", "speed", "steering"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.10 = low, 0.20 = medium, 0.35 = high"
+
+explanation_template:
+  beginner: "On {{corner}} you went to full throttle ({{pre_apex_throttle_peak_pct}}) {{full_throttle_reached_pct_before_apex}} of the corner before the apex — the steering wheel was still turned in. Wait until you're past the apex and the wheel is unwinding before going wide-open; the corner isn't done with you yet."
+  intermediate: "Pre-apex full-throttle on {{corner}} — peak {{pre_apex_throttle_peak_pct}} reached {{full_throttle_reached_pct_before_apex}} of corner before apex. You're using lateral grip for cornering AND longitudinal grip for acceleration simultaneously; even when the chassis tolerates it, you're paying in tire heat and exit-line angle."
+  advanced: "Pre-apex 100% throttle on {{corner}}: peak={{pre_apex_throttle_peak_pct}}, position={{full_throttle_reached_pct_before_apex}} pre-apex. Premature full-throttle saturates the friction circle on the inside front, induces understeer that pushes you wide on exit, and costs ~0.05-0.15s/corner in line compromise. Defer peak to apex+50ms minimum."
+
+prescription:
+  drill_template_id: "drill.apex_referenced_throttle_peak"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "full_throttle_reached_pct_before_apex"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim drivers can get away with earlier full throttle because tire models often under-represent friction-circle saturation; pre-apex full-throttle habits transfer poorly to real cars and produce understeer that costs more time than the early commit saved"]
