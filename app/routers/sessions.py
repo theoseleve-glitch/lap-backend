@@ -66,7 +66,11 @@ from domain.strategy_execution_score import (
     compute_strategy_execution_score,
 )
 from infra.idempotency_cache import IdempotencyCache
-from infra.metrics import ingest_duration_seconds, sessions_ingested_total
+from infra.metrics import (
+    ingest_duration_seconds,
+    next_session_plan_duration_seconds,
+    sessions_ingested_total,
+)
 from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
@@ -284,6 +288,18 @@ async def get_session_next_actions(
     session_id: UUID,
     user: Annotated[UserRow, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+) -> NextActionsResponse:
+    # T192 — observe the next-session-plan latency. The histogram's
+    # 5s SLO (per docs/error-budget.md) is the budget; observations
+    # outside the bracketed buckets fall in +Inf.
+    with next_session_plan_duration_seconds.time():
+        return await _next_actions_impl(session_id, user, db)
+
+
+async def _next_actions_impl(
+    session_id: UUID,
+    user: UserRow,
+    db: AsyncSession,
 ) -> NextActionsResponse:
     profile = (
         await db.execute(
