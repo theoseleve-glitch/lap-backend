@@ -1,0 +1,37 @@
+id: "cs.apex_miss.late_turn"
+version: 1
+category: technique
+subcategory: apex_miss
+difficulty: beginner
+
+detection:
+  signal: turn_in_distance_m_after_optimal
+  condition: "turn_in_distance_m_after_optimal >= 5.0 and apex_position_pct_through_corner >= 0.60"
+  context:
+    must_have_channels: ["steering", "speed", "g_lat"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 5m = low, 8m = medium, 12m = high"
+
+explanation_template:
+  beginner: "On {{corner}} you turned in {{turn_in_distance_m_after_optimal}}m too late — your apex landed at {{apex_position_pct_through_corner}} of the corner, well past the geometric middle. Late turn-in compresses the corner: you have to rotate harder in less distance, killing min speed and exit angle. Trust the earlier turn-in reference."
+  intermediate: "Late turn-in error on {{corner}} — turn-in {{turn_in_distance_m_after_optimal}}m past optimal, apex position {{apex_position_pct_through_corner}}. Delayed steering input forces a sharper rotation in a shorter window; the apex falls late, exit speed suffers, and the chassis works harder than necessary. Anchor an earlier turn-in marker."
+  advanced: "Late-turn apex miss on {{corner}}: turn_in_offset={{turn_in_distance_m_after_optimal}}m late, apex_pos={{apex_position_pct_through_corner}}. Each 5m of late turn-in compresses rotation by ~10% of corner length and costs ~3-6 km/h of min speed; recover by advancing the turn-in reference and accepting earlier brake initiation if needed."
+
+prescription:
+  drill_template_id: "drill.early_turn_in_anchor"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "turn_in_distance_m_after_optimal"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["late turn-in is often a defensive response to over-braking — diagnose the brake-zone reference too. Real-car drivers tend to turn in later as a safety margin; the rule may need to relax slightly when transferring sim-built habits to real until the brake reference is also adjusted."]

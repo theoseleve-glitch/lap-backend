@@ -41,6 +41,7 @@ CORNERING_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "cornering"
 _LATE_APEX_RULE_ID = "cs.min_speed.too_low_late_apex"
 _WIDE_LINE_RULE_ID = "cs.min_speed.too_high_wide_line"
 _EARLY_TURN_RULE_ID = "cs.apex_miss.early_turn"
+_LATE_TURN_RULE_ID = "cs.apex_miss.late_turn"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -56,6 +57,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T123 — early-turn / early-apex signal (apex_position
     # already declared above for T121).
     "turn_in_distance_m_before_optimal": 8.0,
+    # T124 — late-turn / late-apex signal (apex_position
+    # at 0.70 above already firing-side for late apex).
+    "turn_in_distance_m_after_optimal": 8.0,
 }
 
 
@@ -323,6 +327,80 @@ def test_early_turn_silent_when_apex_on_time() -> None:
     fired_ids = {ins.rule_id for ins in insights}
     assert _EARLY_TURN_RULE_ID not in fired_ids, (
         f"{_EARLY_TURN_RULE_ID} fired on early-turn / on-time-"
+        f"apex context — flagged a recovered turn-in. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T124: cs.apex_miss.late_turn ------------------------------
+
+
+def test_late_turn_fires_on_combined_late_turn_and_late_apex() -> None:
+    """Both signals firing: turn-in 8m past the optimal point
+    AND apex at 70% through the corner (well past the 60% late-
+    apex floor). Pin: the canonical "turned in too late, hit
+    the apex too late, compressed the rotation, killed exit"
+    pattern produces an insight; coexists cleanly with T121
+    (which keys off speed-deficit instead of turn-in timing)."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "turn_in_distance_m_after_optimal": 8.0,
+            "apex_position_pct_through_corner": 0.70,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_TURN_RULE_ID in fired_ids, (
+        f"expected {_LATE_TURN_RULE_ID} to fire on combined "
+        f"late-turn + late-apex context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_late_turn_silent_when_turn_in_on_time() -> None:
+    """Apex at 70% (late) but turn-in 1m past optimal (on
+    time). The rule must NOT fire — late apex from another
+    cause (lazy rotation, see T121's territory) must not be
+    mis-attributed to turn-in timing. Pin: the conjunction
+    keeps T121 and T124 cleanly separated by cause."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "turn_in_distance_m_after_optimal": 1.0,
+            "apex_position_pct_through_corner": 0.70,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_TURN_RULE_ID not in fired_ids, (
+        f"{_LATE_TURN_RULE_ID} fired on on-time-turn / late-"
+        f"apex context — mis-attributed rotation cause to "
+        f"turn-in timing. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_late_turn_silent_when_apex_on_time() -> None:
+    """Turn-in 8m past optimal (late) but apex at 50% (on time
+    — driver turned in late but recovered with sharp rotation,
+    landing the apex correctly). The rule must NOT fire — late
+    turn-in alone isn't a problem if the apex still lands right.
+    Pin: the conjunction prevents flagging recovered late-turn
+    mistakes that didn't propagate to apex placement."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "turn_in_distance_m_after_optimal": 8.0,
+            "apex_position_pct_through_corner": 0.50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_TURN_RULE_ID not in fired_ids, (
+        f"{_LATE_TURN_RULE_ID} fired on late-turn / on-time-"
         f"apex context — flagged a recovered turn-in. "
         f"Fired: {sorted(fired_ids)}"
     )

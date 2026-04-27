@@ -232,6 +232,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # is shared with T121 — already 0.50 above, also quiet
     # for T123 which fires <=0.40.)
     "turn_in_distance_m_before_optimal": 0.0,
+    # T124 late-turn signal at on-time value so
+    # `cs.apex_miss.late_turn` stays silent. (apex_position
+    # 0.50 from T121 above is also quiet for T124 which
+    # fires >=0.60.)
+    "turn_in_distance_m_after_optimal": 0.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -322,6 +327,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # is shared with T121 — already 0.50 above, also quiet
     # for T123 which fires <=0.40.)
     "turn_in_distance_m_before_optimal": 0.0,
+    # T124 late-turn signal at on-time value so
+    # `cs.apex_miss.late_turn` stays silent. (apex_position
+    # 0.50 from T121 above is also quiet for T124 which
+    # fires >=0.60.)
+    "turn_in_distance_m_after_optimal": 0.0,
 }
 
 
