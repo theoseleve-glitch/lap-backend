@@ -204,6 +204,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `th.early_full.before_apex` stays silent.
     "pre_apex_throttle_peak_pct": 0.50,
     "full_throttle_reached_pct_before_apex": 0.02,
+    # T118 straight-line throttle utilization at clean values
+    # so `th.full_throttle_underuse.straights` stays silent.
+    "straight_full_throttle_time_pct": 0.95,
+    "straight_length_m": 400,
 }
 
 # A context where every braking rule should be silent — values
@@ -266,6 +270,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # `th.early_full.before_apex` stays silent.
     "pre_apex_throttle_peak_pct": 0.50,
     "full_throttle_reached_pct_before_apex": 0.02,
+    # T118 straight-line throttle utilization at clean values
+    # so `th.full_throttle_underuse.straights` stays silent.
+    "straight_full_throttle_time_pct": 0.95,
+    "straight_length_m": 400,
 }
 
 

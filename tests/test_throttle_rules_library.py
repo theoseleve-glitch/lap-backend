@@ -44,6 +44,7 @@ _PARTIAL_RULE_ID = "th.partial_throttle.mid_corner"
 _LIFT_RULE_ID = "th.throttle_lift.mid_corner"
 _STAIRCASE_RULE_ID = "th.staircase_pattern.uneven_modulation"
 _EARLY_FULL_RULE_ID = "th.early_full.before_apex"
+_UNDERUSE_RULE_ID = "th.full_throttle_underuse.straights"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -73,6 +74,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T117 — early-full / pre-apex throttle signals.
     "pre_apex_throttle_peak_pct": 0.98,
     "full_throttle_reached_pct_before_apex": 0.20,
+    # T118 — straight-line throttle utilization signals.
+    "straight_full_throttle_time_pct": 0.70,
+    "straight_length_m": 600,
 }
 
 
@@ -640,4 +644,76 @@ def test_early_full_silent_when_full_essentially_at_apex() -> None:
         f"{_EARLY_FULL_RULE_ID} fired on full-at-apex context "
         f"— flagged correct apex-timed throttle as too early. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T118: th.full_throttle_underuse.straights -----------------
+
+
+def test_underuse_fires_on_combined_low_throttle_and_long_straight() -> None:
+    """Both signals firing: only 70% of the straight spent at
+    full throttle on a 600m straight (a real straight where the
+    pedal should be pinned >85% of the time). Pin: the canonical
+    "lifted on the straight for no good reason" pattern produces
+    an insight — pure acceleration time left on the table."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "straight_full_throttle_time_pct": 0.70,
+            "straight_length_m": 600,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _UNDERUSE_RULE_ID in fired_ids, (
+        f"expected {_UNDERUSE_RULE_ID} to fire on combined low-"
+        f"throttle + long-straight context, got {sorted(fired_ids)}"
+    )
+
+
+def test_underuse_silent_when_straight_too_short() -> None:
+    """Only 70% throttle utilization but the "straight" is just
+    a 100m connector between two corners (a short transition
+    where lift-and-coast for entry-speed management is normal
+    technique). The rule must NOT fire — short straights have
+    different physics; coaching here would flood drivers with
+    noise. Pin: the conjunction guards against false fires on
+    chicane connectors and short transitions."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "straight_full_throttle_time_pct": 0.70,
+            "straight_length_m": 100,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _UNDERUSE_RULE_ID not in fired_ids, (
+        f"{_UNDERUSE_RULE_ID} fired on short-connector context "
+        f"— flagged tactical lift-and-coast as throttle underuse. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_underuse_silent_when_throttle_pinned() -> None:
+    """600m straight with 95% full-throttle utilization (driver
+    is doing the right thing — pedal pinned for the vast majority
+    of the straight). The rule must NOT fire — 95% is excellent;
+    the 5% gap is the brake-zone setup at the end. Pin: baseline
+    no-fire to prove the rule isn't fires-always on long straights."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "straight_full_throttle_time_pct": 0.95,
+            "straight_length_m": 600,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _UNDERUSE_RULE_ID not in fired_ids, (
+        f"{_UNDERUSE_RULE_ID} fired on pinned-throttle straight "
+        f"— flagged a clean driver. Fired: {sorted(fired_ids)}"
     )

@@ -1,0 +1,37 @@
+id: "th.full_throttle_underuse.straights"
+version: 1
+category: technique
+subcategory: full_throttle_underuse
+difficulty: beginner
+
+detection:
+  signal: straight_full_throttle_time_pct
+  condition: "straight_full_throttle_time_pct < 0.85 and straight_length_m >= 200"
+  context:
+    must_have_channels: ["throttle", "speed"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.85 = low, 0.75 = medium, 0.60 = high"
+
+explanation_template:
+  beginner: "On the {{straight_length_m}}m straight before {{corner}} you only held full throttle {{straight_full_throttle_time_pct}} of the way. That's free time you're throwing away — pin the pedal until your braking marker. If you're worried about the next corner, brake later, don't lift earlier."
+  intermediate: "Straight-line throttle underuse approaching {{corner}} — utilization {{straight_full_throttle_time_pct}} on a {{straight_length_m}}m straight. Pure acceleration deficit; either reference points are off (lifting too early in anticipation) or you're managing fuel/tire when you don't need to. Diagnose against the lap plan."
+  advanced: "Full-throttle utilization {{straight_full_throttle_time_pct}} on {{straight_length_m}}m straight before {{corner}}. Each 1% under-utilization on a 600m straight at 250km/h costs ~0.04s; the fix is reference-point discipline (commit to a brake marker and hold throttle to it), not technique — assuming no fuel/tire constraint."
+
+prescription:
+  drill_template_id: "drill.straight_throttle_to_marker"
+  expected_gain_kmh: "2-4"
+  success_condition:
+    metric: "straight_full_throttle_time_pct"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim drivers tend to under-utilize because consequences are zero — real drivers under-utilize for different reasons (fuel saving, tire heat, anticipation). Coaching the sim habit transfers; coaching the real-car habit may need to verify it's not a deliberate strategy decision first."]
