@@ -32,6 +32,7 @@ from app.routers import sessions as sessions_router
 from app.routers import skills as skills_router
 from app.routers import target_events as target_events_router
 from app.routers import timeline as timeline_router
+from app.routers import v2 as v2_router
 from app.routers import weaknesses as weaknesses_router
 from app.routers import webhooks as webhooks_router
 from infra.sentry import configure_sentry
@@ -135,6 +136,8 @@ app.include_router(target_events_router.driver_router)
 app.include_router(timeline_router.router)
 app.include_router(weaknesses_router.router)
 app.include_router(webhooks_router.router)
+# T188 — empty /api/v2 router scaffold; v1 still primary.
+app.include_router(v2_router.router)
 
 
 @app.get("/healthz")

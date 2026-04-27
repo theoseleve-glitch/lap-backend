@@ -112,15 +112,42 @@ def test_v2_scaffold_is_importable_python_package() -> None:
     assert module is not None
 
 
-def test_v2_scaffold_has_no_routers_yet() -> None:
-    """Scaffold = structural placeholder, not implementation.
-    Once routers land here, this test should be deleted (not
-    weakened) by whoever ships the first v2 endpoint."""
+def test_v2_package_exposes_empty_router() -> None:
+    """T188 — the v2 package exposes a single APIRouter with
+    prefix `/api/v2` and zero registered routes. Empty by
+    design: future v2 resource modules attach their endpoints
+    to this router via `app.routers.v2.router.include_router`
+    or by wiring resource-specific sub-routers in `main.py`.
+
+    Once the first v2 endpoint ships, this test should be
+    weakened to "prefix is /api/v2" without the route-count
+    assertion (or replaced with a positive assertion that the
+    expected v2 endpoint is present)."""
     import app.routers.v2 as v2
 
-    routers_in_v2 = [
-        getattr(v2, name)
-        for name in dir(v2)
-        if isinstance(getattr(v2, name, None), APIRouter)
-    ]
-    assert routers_in_v2 == []
+    assert hasattr(v2, "router"), "app.routers.v2 must export `router`"
+    assert isinstance(v2.router, APIRouter)
+    assert v2.router.prefix == "/api/v2"
+    assert v2.router.routes == [], (
+        f"v2 router has unexpected routes: {v2.router.routes}"
+    )
+
+
+def test_v2_router_included_in_main() -> None:
+    """`main.py` must wire the v2 router via include_router so
+    the prefix is reserved at runtime, not just at module level.
+    For an empty router this is currently a no-op at the routing
+    table — but the explicit include is what the next maintainer
+    sees + extends, and removing it would break wiring silently.
+
+    Source-grep is the right pin here because the runtime app
+    has no v2-prefixed routes to enumerate (router is empty)."""
+    main_source = (REPO_ROOT / "app" / "main.py").read_text(
+        encoding="utf-8"
+    )
+    assert "v2_router.router" in main_source or (
+        "v2.router" in main_source
+    ), (
+        "app/main.py must `include_router` the v2 router — "
+        "see app/routers/v2/__init__.py"
+    )
