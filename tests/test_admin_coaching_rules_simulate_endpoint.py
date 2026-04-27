@@ -402,6 +402,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # alone is load-bearing silencer.)
     "mistake_event_count_first_3_laps": 0,
     "tire_temp_avg_first_3_laps_below_optimal_celsius": 3.0,
+    # T150 warm-up pace signal at appropriately-paced value so
+    # `tm.warm_up_pace.too_aggressive` stays silent. (Pct 0.06
+    # is well above the <=0.02 firing threshold and is the
+    # load-bearing silencer; the existing
+    # `clean_lap_count_in_session: 5` from T131 above already
+    # satisfies T150's >=5 sample-size guard.)
+    "warm_up_lap_time_pct_above_session_best": 0.06,
 }
 
 # A context where every braking rule should be silent — values
@@ -641,6 +648,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # independently.
     "mistake_event_count_first_3_laps": 0,
     "tire_temp_avg_first_3_laps_below_optimal_celsius": 3.0,
+    # T150 warm-up pace signal at appropriately-paced value so
+    # `tm.warm_up_pace.too_aggressive` stays silent. Same shape
+    # as firing fixture; load-bearing silencer is the pct
+    # (0.06, well above the <=0.02 firing threshold).
+    "warm_up_lap_time_pct_above_session_best": 0.06,
 }
 
 

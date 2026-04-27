@@ -51,6 +51,7 @@ _LIFT_COAST_RULE_ID = "fm.lift_and_coast.too_rare"
 _INEFFECTIVE_SAVING_RULE_ID = "fm.fuel_saving.ineffective_pattern"
 _PIT_WINDOW_RULE_ID = "fm.pit_window.late_entry_risk"
 _COLD_TIRE_RULE_ID = "tm.cold_tire_mistakes.first_3_laps"
+_WARM_UP_PACE_RULE_ID = "tm.warm_up_pace.too_aggressive"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -117,6 +118,11 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # below-optimal temp.
     "mistake_event_count_first_3_laps": 4,
     "tire_temp_avg_first_3_laps_below_optimal_celsius": 15.0,
+    # T150 — upstream cause for T141 + T149: pace itself too
+    # high in warm-up window. Caller supplies the warm-up
+    # avg-lap-time as a pct above session-best. <=0.02 means
+    # the driver is trying to set quali pace from lap 1.
+    "warm_up_lap_time_pct_above_session_best": 0.01,
 }
 
 
@@ -908,4 +914,85 @@ def test_cold_tire_silent_when_no_mistakes() -> None:
         f"{_COLD_TIRE_RULE_ID} fired on careful cold-tire driver — "
         f"coached caution to a driver already being careful. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T150: tm.warm_up_pace.too_aggressive ----------------------
+
+
+def test_warm_up_pace_fires_on_combined_quali_pace_and_long_stint() -> None:
+    """Both signals firing: warm-up laps within 1% of session-
+    best (well below the 0.02 firing threshold — driver is
+    trying to set quali pace from lap 1) AND 8 clean laps in
+    the session (well past the 5-lap minimum needed to
+    establish a meaningful session-best). Pin: the canonical
+    "you're trying to qualify on warm-up tires" pattern produces
+    an upstream-cause insight, distinct from T141 (overheat
+    symptom) and T149 (mistake symptom)."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "warm_up_lap_time_pct_above_session_best": 0.01,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WARM_UP_PACE_RULE_ID in fired_ids, (
+        f"expected {_WARM_UP_PACE_RULE_ID} to fire on combined "
+        f"quali-pace + long-stint context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_warm_up_pace_silent_when_lap_count_too_low() -> None:
+    """Warm-up laps within 1% of session-best but only 3 clean
+    laps total. Session-best is statistically unreliable across
+    a 1-3 lap sample (the warm-up lap could literally BE the
+    session-best by virtue of being the only timed lap), so
+    the comparison is meaningless. The rule must NOT fire —
+    sample size guard prevents premature warm-up diagnosis.
+    Pin: the >=5 lap minimum keeps the session-best reference
+    statistically meaningful."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "warm_up_lap_time_pct_above_session_best": 0.01,
+            "clean_lap_count_in_session": 3,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WARM_UP_PACE_RULE_ID not in fired_ids, (
+        f"{_WARM_UP_PACE_RULE_ID} fired on 3-lap sample — coached "
+        f"warm-up pace from a sample where session-best is noise. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_warm_up_pace_silent_when_warm_up_appropriately_paced() -> None:
+    """Plenty of clean laps (8) but warm-up laps were 5% above
+    session-best — the driver staged the warm-up appropriately
+    (slower laps 1-2, full pace from lap 3+). The rule must
+    NOT fire — coaching "ease into the pace" to a driver who
+    already did is wrong; they did the right thing. Pin: the
+    pace guard prevents firing on every multi-lap session
+    regardless of warm-up technique. The rule targets the
+    quali-pace-from-lap-1 failure mode specifically."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "warm_up_lap_time_pct_above_session_best": 0.05,
+            "clean_lap_count_in_session": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WARM_UP_PACE_RULE_ID not in fired_ids, (
+        f"{_WARM_UP_PACE_RULE_ID} fired on appropriately-paced "
+        f"warm-up — coached restraint to a driver who already "
+        f"staged correctly. Fired: {sorted(fired_ids)}"
     )
