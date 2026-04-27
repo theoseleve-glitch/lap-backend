@@ -1,10 +1,11 @@
-"""T163-T167 (sprint2-backend) — organizations endpoints.
+"""T163-T169 (sprint2-backend) — organizations endpoints.
 
 T163 — POST   /api/v1/orgs creates an Organization.
 T164 — POST   /api/v1/orgs/:id/invites creates an invitation row.
 T165 — POST   /api/v1/orgs/:id/invites/:token/accept redeems it.
 T166 — DELETE /api/v1/orgs/:id/members/:user_id removes member.
 T167 — GET    /api/v1/orgs/:id/members lists members under RLS.
+T169 — GET    /api/v1/orgs/:id/drivers/:uid/profile coach view.
 
 T163 endpoint:
   - assigns admin_user_id to the calling user
@@ -58,6 +59,21 @@ T167 endpoint:
     billing-admin is admin-only. Drivers see their cohort
     peers under the same rule.
 
+T169 endpoint:
+  - 401 unauthenticated
+  - 403 caller not in org (status parity with unknown-org)
+  - 403 caller role is `driver` (drivers don't peer-spy via
+    this endpoint — their /api/v1/driver/profile self-view
+    serves their own data; peer-driver intel-gathering is
+    out of scope)
+  - 403 target user is not a `driver`-role member of the org
+    (coaches don't view admin / peer-coach profiles — the
+    endpoint is the coach<->driver supervision surface; admin
+    and peer-coach visibility is admin-list-only via T167)
+  - 200 returns DriverProfileAggregate (same shape as T004's
+    self-view) — admin / coach in the org sees the driver's
+    progress + weaknesses + prescriptions + readiness
+
 The schema-layer Pydantic enforces input bounds (name 1-120,
 seats_limit >= 1, plan ∈ {free, team, pro}, invite role ∈
 {coach, driver}, email shape sanity-checked) so the endpoint
@@ -74,11 +90,12 @@ from uuid import UUID
 
 import uuid6
 from fastapi import APIRouter, Depends, HTTPException, status
-from lap_schemas.v1 import Organization as OrganizationSchema
 from lap_schemas.v1 import (
+    DriverProfileAggregate,
     OrganizationCreate,
     OrganizationInvitationCreate,
 )
+from lap_schemas.v1 import Organization as OrganizationSchema
 from lap_schemas.v1 import OrganizationInvitation as OrgInvitationSchema
 from lap_schemas.v1 import (
     OrganizationMemberEntry as OrgMemberEntrySchema,
@@ -93,6 +110,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.routers.driver_profile import build_driver_profile_aggregate
 from infra.orm import Organization as OrganizationRow
 from infra.orm import OrganizationInvitation as OrgInvitationRow
 from infra.orm import OrganizationMember as OrganizationMemberRow
@@ -456,3 +474,56 @@ async def list_organization_members(
         for r in rows
     )
     return OrgMemberListSchema(entries=entries)
+
+
+@router.get(
+    "/{org_id}/drivers/{user_id}/profile",
+    response_model=DriverProfileAggregate,
+    responses={
+        403: {"description": "not_authorized"},
+    },
+)
+async def view_org_driver_profile(
+    org_id: UUID,
+    user_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DriverProfileAggregate:
+    """T169 — coach / admin views a driver's profile aggregate.
+
+    Authz:
+      - caller must be admin or coach in the org
+      - target must be role=driver in the same org
+      - all unauthorized cases return 403 (status parity to
+        prevent existence leaks)
+    """
+    caller_membership = (
+        await db.execute(
+            select(OrganizationMemberRow).where(
+                OrganizationMemberRow.org_id == org_id,
+                OrganizationMemberRow.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if caller_membership is None or caller_membership.role == "driver":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_authorized",
+        )
+    target_membership = (
+        await db.execute(
+            select(OrganizationMemberRow).where(
+                OrganizationMemberRow.org_id == org_id,
+                OrganizationMemberRow.user_id == user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if (
+        target_membership is None
+        or target_membership.role != "driver"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_authorized",
+        )
+    return await build_driver_profile_aggregate(db, user_id)

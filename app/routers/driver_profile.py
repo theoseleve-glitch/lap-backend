@@ -100,15 +100,17 @@ async def patch_driver_profile(
     )
 
 
-@router.get("/profile", response_model=DriverProfileAggregate)
-async def get_driver_profile_aggregate(
-    user: Annotated[UserRow, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+async def build_driver_profile_aggregate(
+    db: AsyncSession, target_user_id: UUID
 ) -> DriverProfileAggregate:
+    """T169 — shared aggregate builder used by both the self-view
+    (`GET /api/v1/driver/profile`) and the org-coach cross-view
+    (`GET /api/v1/orgs/:id/drivers/:uid/profile`). Returns the
+    empty aggregate when the user has no DriverProfile row yet."""
     driver_id = (
         await db.execute(
             select(DriverProfileRow.id).where(
-                DriverProfileRow.user_id == user.id
+                DriverProfileRow.user_id == target_user_id
             )
         )
     ).scalar_one_or_none()
@@ -125,6 +127,14 @@ async def get_driver_profile_aggregate(
         active_prescriptions=prescriptions,
         readiness=readiness,
     )
+
+
+@router.get("/profile", response_model=DriverProfileAggregate)
+async def get_driver_profile_aggregate(
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DriverProfileAggregate:
+    return await build_driver_profile_aggregate(db, user.id)
 
 
 async def _latest_progress(
