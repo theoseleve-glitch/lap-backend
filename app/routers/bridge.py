@@ -38,6 +38,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db, get_suggest_cache
+from app.error_codes import ErrorCode
 from infra.orm import CarModel as CarModelRow
 from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
@@ -78,7 +79,7 @@ async def create_bridge_link(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
 
     # All sessions in the pair must belong to this driver. We
@@ -102,7 +103,7 @@ async def create_bridge_link(
     if len(sessions) != len(set(session_ids)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
 
     existing_pairs = await _load_existing_pair_fingerprints(db, profile.id)
@@ -144,7 +145,7 @@ async def bulk_create_bridge_links(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
 
     # All session ids across all items in one shot. Cross-driver
@@ -167,7 +168,7 @@ async def bulk_create_bridge_links(
     if len(sessions_owned) != len(all_session_ids):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
     sessions_by_id = {s.id: s for s in sessions_owned}
 
@@ -224,7 +225,7 @@ async def get_bridge_link(
     if row is None or profile is None or row.driver_id != profile.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="transfer_link_not_found",
+            detail=ErrorCode.TRANSFER_LINK_NOT_FOUND,
         )
     return _row_to_schema(row)
 
@@ -260,7 +261,7 @@ async def delete_bridge_link(
     if row is None or profile is None or row.driver_id != profile.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="transfer_link_not_found",
+            detail=ErrorCode.TRANSFER_LINK_NOT_FOUND,
         )
     await db.execute(
         delete(TransferLinkRow).where(TransferLinkRow.id == link_id)
@@ -301,7 +302,7 @@ async def rate_bridge_link(
     if row is None or profile is None or row.driver_id != profile.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="transfer_link_not_found",
+            detail=ErrorCode.TRANSFER_LINK_NOT_FOUND,
         )
 
     row.usefulness_rating = body.rating
@@ -380,7 +381,7 @@ async def _stage_link(
     if new_pair in existing_pairs:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="duplicate_link",
+            detail=ErrorCode.DUPLICATE_LINK,
         )
 
     link_id = uuid6.uuid7()
@@ -469,7 +470,7 @@ async def _validate_pair_bridgeable(
         if not raw_track or not raw_car:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="session_unbridgeable",
+                detail=ErrorCode.SESSION_UNBRIDGEABLE,
             )
         track_ids.append(UUID(str(raw_track)))
         car_ids.append(UUID(str(raw_car)))
@@ -488,13 +489,13 @@ async def _validate_pair_bridgeable(
     if len(track_rows) != len(set(track_ids)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="session_unbridgeable",
+            detail=ErrorCode.SESSION_UNBRIDGEABLE,
         )
     masters = {r.master_track_id for r in track_rows}
     if len(masters) != 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="incompatible_track",
+            detail=ErrorCode.INCOMPATIBLE_TRACK,
         )
 
     car_rows = (
@@ -509,13 +510,13 @@ async def _validate_pair_bridgeable(
     if len(car_rows) != len(set(car_ids)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="session_unbridgeable",
+            detail=ErrorCode.SESSION_UNBRIDGEABLE,
         )
     classes = {r.car_class for r in car_rows}
     if len(classes) != 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="incompatible_car_class",
+            detail=ErrorCode.INCOMPATIBLE_CAR_CLASS,
         )
 
 
@@ -565,7 +566,7 @@ async def list_driver_bridge_links(
     if profile is None or profile.id != driver_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
 
     total = (
@@ -628,7 +629,7 @@ async def suggest_bridge_links(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
 
     source = (
@@ -641,7 +642,7 @@ async def suggest_bridge_links(
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
 
     # T048: cache hit short-circuits the catalog joins. Lookup is
@@ -656,7 +657,7 @@ async def suggest_bridge_links(
     if not src_track_raw or not src_car_raw:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="session_unbridgeable",
+            detail=ErrorCode.SESSION_UNBRIDGEABLE,
         )
     src_track_row = (
         await db.execute(
@@ -675,7 +676,7 @@ async def suggest_bridge_links(
     if src_track_row is None or src_car_row is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="session_unbridgeable",
+            detail=ErrorCode.SESSION_UNBRIDGEABLE,
         )
     src_master = src_track_row.master_track_id
     src_class = src_car_row.car_class

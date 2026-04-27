@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Config
+from app.error_codes import ErrorCode
 from domain.billing import is_in_grace_period
 from infra.clerk import ClerkJwksClient
 from infra.db import make_engine, make_session_factory
@@ -20,9 +21,9 @@ from infra.idempotency_cache import IdempotencyCache
 from infra.job_event_bus import InMemoryJobEventBus, JobEventBusProtocol
 from infra.orm import User
 from infra.pairing_store import PairingStoreProtocol, RedisPairingStore
-from infra.suggest_cache import SuggestCache
 from infra.posthog import PosthogClientProtocol, make_posthog_client
 from infra.storage import BlobStoreProtocol, LocalBlobStore, R2BlobStore
+from infra.suggest_cache import SuggestCache
 from infra.task_dispatcher import InMemoryTaskDispatcher, TaskDispatcherProtocol
 
 
@@ -109,7 +110,7 @@ def get_posthog_client() -> PosthogClientProtocol:
 
 _UNAUTHORIZED = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="invalid_token",
+    detail=ErrorCode.INVALID_TOKEN,
     headers={"WWW-Authenticate": "Bearer"},
 )
 
@@ -190,7 +191,7 @@ async def get_current_user(
 
 
 _FORBIDDEN_NOT_ADMIN = HTTPException(
-    status_code=status.HTTP_403_FORBIDDEN, detail="admin_required"
+    status_code=status.HTTP_403_FORBIDDEN, detail=ErrorCode.ADMIN_REQUIRED
 )
 
 
@@ -208,7 +209,7 @@ _ACTIVE_SUBSCRIPTION_STATUSES = frozenset({"active", "trialing"})
 
 _PAYMENT_REQUIRED = HTTPException(
     status_code=status.HTTP_402_PAYMENT_REQUIRED,
-    detail="subscription_required",
+    detail=ErrorCode.SUBSCRIPTION_REQUIRED,
 )
 
 

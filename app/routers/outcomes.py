@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from infra.orm import ActionOutcome as ActionOutcomeRow
 from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import DriverProfile as DriverProfileRow
@@ -48,7 +49,7 @@ def _parse_window(window: str) -> int:
     if days <= 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="window_must_be_positive",
+            detail=ErrorCode.WINDOW_MUST_BE_POSITIVE,
         )
     return days
 
@@ -76,7 +77,7 @@ async def list_driver_outcomes(
     if profile is None or profile.id != driver_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
     cutoff = datetime.now(UTC) - timedelta(days=days)
     rows: Any = (

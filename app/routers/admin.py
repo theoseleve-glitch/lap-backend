@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db, require_admin
+from app.error_codes import ErrorCode
 from app.logging import logger
 from coaching.library.rule_runner import (
     InsightRenderError,
@@ -57,7 +58,7 @@ def _require_admin(user: UserRow) -> None:
     if not user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="admin_only",
+            detail=ErrorCode.ADMIN_ONLY,
         )
 
 
@@ -78,12 +79,12 @@ async def force_sync_billing_status(
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="user_not_found",
+            detail=ErrorCode.USER_NOT_FOUND,
         )
     if not target.stripe_customer_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="no_stripe_customer",
+            detail=ErrorCode.NO_STRIPE_CUSTOMER,
         )
     listing = stripe.Subscription.list(
         customer=target.stripe_customer_id, limit=1

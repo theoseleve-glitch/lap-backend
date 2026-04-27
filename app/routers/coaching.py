@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Config
 from app.deps import get_config, get_current_user, get_db
+from app.error_codes import ErrorCode
 from coaching.library.bundle import sign_bundle
 from coaching.library.compiler import compile_library
 from coaching.library.rule_loader import load_rules
@@ -80,7 +81,7 @@ def get_rules_bundle(
         # been serving unsigned payloads. Mirrors stripe webhook 503.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="coaching_bundle_signing_secret_not_configured",
+            detail=ErrorCode.COACHING_BUNDLE_SIGNING_SECRET_NOT_CONFIGURED,
         )
     rules = load_rules(_RULES_DIR)
     unsigned = compile_library(rules)
@@ -125,7 +126,7 @@ async def flag_insight_false_positive(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="insight_not_found",
+            detail=ErrorCode.INSIGHT_NOT_FOUND,
         )
     if not insight.flagged_false_positive:
         insight.flagged_false_positive = True

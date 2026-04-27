@@ -38,6 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import User as UserRow
@@ -82,7 +83,7 @@ async def _load_owned_prescription(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="prescription_not_found",
+            detail=ErrorCode.PRESCRIPTION_NOT_FOUND,
         )
     return prescription
 
@@ -177,7 +178,7 @@ async def list_driver_prescriptions(
     if profile is None or profile.id != driver_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
     stmt = select(ActionPrescriptionRow).where(
         ActionPrescriptionRow.driver_id == driver_id

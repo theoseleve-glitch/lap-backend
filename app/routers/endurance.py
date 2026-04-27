@@ -29,6 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from infra.orm import DriverProfile, EnduranceEvent, StintRecord
 from infra.orm import Session as SessionRow
 from infra.orm import User as UserRow
@@ -55,7 +56,7 @@ async def get_endurance_event_summary(
     if event is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="endurance_event_not_found",
+            detail=ErrorCode.ENDURANCE_EVENT_NOT_FOUND,
         )
 
     # Sessions linked via manifest.endurance_event_id (T066). Use
@@ -134,7 +135,7 @@ async def get_driver_endurance_history(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
 
     # driver_ids is a JSON list[str]; SQL JSON-contains differs

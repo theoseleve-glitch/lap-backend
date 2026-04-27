@@ -49,6 +49,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import CoachSessionNote as CoachSessionNoteRow
 from infra.orm import DriverProfile as DriverProfileRow
@@ -84,7 +85,7 @@ async def create_coach_prescription(
     if caller_membership is None or caller_membership.role == "driver":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
 
     target_membership = (
@@ -101,7 +102,7 @@ async def create_coach_prescription(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
 
     target_profile = (
@@ -119,7 +120,7 @@ async def create_coach_prescription(
         # not_authorized cases to keep the response uniform.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
 
     now = datetime.now(UTC)
@@ -191,7 +192,7 @@ async def create_coach_session_note(
     if session_row is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
     driver_profile = (
         await db.execute(
@@ -203,7 +204,7 @@ async def create_coach_session_note(
     if driver_profile is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
 
     # Find any org where (a) caller is admin/coach AND (b)
@@ -235,7 +236,7 @@ async def create_coach_session_note(
     if not (caller_org_ids & driver_org_ids):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
 
     note = CoachSessionNoteRow(

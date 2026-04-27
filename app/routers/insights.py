@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import User as UserRow
@@ -66,7 +67,7 @@ async def flag_insight_false_positive(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="insight_not_found",
+            detail=ErrorCode.INSIGHT_NOT_FOUND,
         )
     if not insight.flagged_false_positive:
         insight.flagged_false_positive = True

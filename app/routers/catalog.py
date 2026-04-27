@@ -17,6 +17,7 @@ from lap_schemas.v1 import (
     TrackCatalogPublic,
 )
 
+from app.error_codes import ErrorCode
 from coaching.catalog.loader import (
     CarCatalogEntry,
     TrackCatalogEntry,
@@ -78,7 +79,7 @@ async def get_track(master_track_id: str) -> TrackCatalogPublic:
     if entry is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="track_not_found",
+            detail=ErrorCode.TRACK_NOT_FOUND,
         )
     return _to_public(entry)
 
@@ -126,6 +127,6 @@ async def get_car(master_car_id: str) -> CarCatalogPublic:
     if entry is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="car_not_found",
+            detail=ErrorCode.CAR_NOT_FOUND,
         )
     return _car_to_public(entry)

@@ -40,6 +40,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import DriverProgressSnapshot as ProgressSnapshotRow
@@ -82,7 +83,7 @@ async def patch_driver_profile(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
     if update.display_name is not None:
         profile.display_name = update.display_name

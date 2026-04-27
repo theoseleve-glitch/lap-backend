@@ -29,6 +29,7 @@ from typing import TypeVar
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
+from app.error_codes import ErrorCode
 from infra.rate_limiter import RateLimiter
 
 F = TypeVar("F", bound=Callable[..., object])
@@ -156,6 +157,6 @@ async def rate_limit_middleware(
     if not limiter.check(key):
         return JSONResponse(
             status_code=429,
-            content={"detail": "rate_limited"},
+            content={"detail": ErrorCode.RATE_LIMITED},
         )
     return await call_next(request)

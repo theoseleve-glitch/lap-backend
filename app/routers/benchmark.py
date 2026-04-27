@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from domain.cohort_minimum import (
     MIN_COHORT_SIZE,
     count_cohort_members,
@@ -67,7 +68,7 @@ async def get_driver_benchmark(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
 
     # Top-level eligibility gate: if locked, short-circuit to null.

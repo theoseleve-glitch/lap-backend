@@ -44,6 +44,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import DriverProgressSnapshot as ProgressSnapshotRow
 from infra.orm import User as UserRow
@@ -89,7 +90,7 @@ async def get_skill_drilldown(
     ).scalar_one_or_none()
     if driver_id is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="driver_not_found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=ErrorCode.DRIVER_NOT_FOUND
         )
 
     snapshots = await _load_snapshots(db, driver_id)

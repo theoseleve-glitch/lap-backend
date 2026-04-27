@@ -54,6 +54,7 @@ from app.deps import (
     get_posthog_client,
     get_task_dispatcher,
 )
+from app.error_codes import ErrorCode
 from domain.checksum_validator import (
     ChecksumMismatchError,
     verify_chunk_checksum,
@@ -117,7 +118,7 @@ async def ingest_session(
     if idempotency_key is None or not idempotency_key.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="idempotency_key_required",
+            detail=ErrorCode.IDEMPOTENCY_KEY_REQUIRED,
         )
     cached = cache.get(idempotency_key)
     if cached is not None:
@@ -131,14 +132,14 @@ async def ingest_session(
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="manifest_invalid_json",
+            detail=ErrorCode.MANIFEST_INVALID_JSON,
         ) from exc
     try:
         parsed_manifest = SessionManifest.model_validate(data)
     except ValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="manifest_invalid",
+            detail=ErrorCode.MANIFEST_INVALID,
         ) from exc
 
     session_id = parsed_manifest.session_id
@@ -157,7 +158,7 @@ async def ingest_session(
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="chunk_filename_invalid",
+                detail=ErrorCode.CHUNK_FILENAME_INVALID,
             )
         payload = await chunk.read()
         try:
@@ -167,7 +168,7 @@ async def ingest_session(
         except ChecksumMismatchError as exc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="chunk_checksum_mismatch",
+                detail=ErrorCode.CHUNK_CHECKSUM_MISMATCH,
             ) from exc
         verified.append((filename, payload, digest_hex))
 
@@ -257,7 +258,7 @@ async def get_session(
     if row is None or profile is None or row.driver_id != profile.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
     return SessionDetail(
         id=row.id,
@@ -303,7 +304,7 @@ async def get_session_next_actions(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
     # JSONB containment isn't standard SQL so filter sessions_affected
     # in Python — episode counts per driver are bounded.
@@ -403,7 +404,7 @@ async def get_session_coaching(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
 
     insight_rows = list(
@@ -550,7 +551,7 @@ async def create_strategy_plan(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
     existing = (
         await db.execute(
@@ -562,7 +563,7 @@ async def create_strategy_plan(
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="strategy_plan_already_exists",
+            detail=ErrorCode.STRATEGY_PLAN_ALREADY_EXISTS,
         )
     row = StrategyPlanRow(
         id=uuid6.uuid7(),
@@ -627,7 +628,7 @@ async def create_strategy_event(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
     row = StrategyEventRow(
         id=uuid6.uuid7(),
@@ -688,7 +689,7 @@ async def get_strategy_timeline(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
     plan_row = (
         await db.execute(
@@ -775,7 +776,7 @@ async def get_strategy_visualization(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
 
     plan_row = (
@@ -938,7 +939,7 @@ async def create_strategy_template(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
     row = StrategyTemplateRow(
         driver_id=profile.id,
@@ -954,7 +955,7 @@ async def create_strategy_template(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="duplicate_template_name",
+            detail=ErrorCode.DUPLICATE_TEMPLATE_NAME,
         ) from exc
     await db.refresh(row)
     return _template_to_schema(row)
@@ -1017,7 +1018,7 @@ async def delete_strategy_template(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="template_not_found",
+            detail=ErrorCode.TEMPLATE_NOT_FOUND,
         )
     row = (
         await db.execute(
@@ -1030,7 +1031,7 @@ async def delete_strategy_template(
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="template_not_found",
+            detail=ErrorCode.TEMPLATE_NOT_FOUND,
         )
     await db.execute(
         delete(StrategyTemplateRow).where(
@@ -1094,7 +1095,7 @@ async def simulate_strategy(
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="session_not_found",
+            detail=ErrorCode.SESSION_NOT_FOUND,
         )
     event_rows = (
         await db.execute(

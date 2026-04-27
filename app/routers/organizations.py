@@ -122,6 +122,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from app.routers.driver_profile import build_driver_profile_aggregate
 from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import DriverProfile as DriverProfileRow
@@ -230,7 +231,7 @@ async def patch_organization_branding(
     if org is None or org.admin_user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_org_admin",
+            detail=ErrorCode.NOT_ORG_ADMIN,
         )
     org.branding_logo_url = body.branding_logo_url
     await db.commit()
@@ -274,7 +275,7 @@ async def create_organization_invitation(
         # same to non-admin callers (no org-existence leak).
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_org_admin",
+            detail=ErrorCode.NOT_ORG_ADMIN,
         )
 
     # Already-a-member check: join organization_members → users
@@ -299,7 +300,7 @@ async def create_organization_invitation(
         if is_member:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="already_member",
+                detail=ErrorCode.ALREADY_MEMBER,
             )
 
     now = datetime.now(UTC)
@@ -390,12 +391,12 @@ async def accept_organization_invitation(
         # uniformity.
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="invitation_not_found",
+            detail=ErrorCode.INVITATION_NOT_FOUND,
         )
     if invitation.accepted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="already_accepted",
+            detail=ErrorCode.ALREADY_ACCEPTED,
         )
     now = datetime.now(UTC)
     expires_at = invitation.expires_at
@@ -406,12 +407,12 @@ async def accept_organization_invitation(
     if expires_at <= now:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
-            detail="invitation_expired",
+            detail=ErrorCode.INVITATION_EXPIRED,
         )
     if user.email != invitation.email:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="email_mismatch",
+            detail=ErrorCode.EMAIL_MISMATCH,
         )
 
     member = OrganizationMemberRow(
@@ -470,14 +471,14 @@ async def remove_organization_member(
         # both return 403 to non-admins.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_org_admin",
+            detail=ErrorCode.NOT_ORG_ADMIN,
         )
     if user_id == org.admin_user_id:
         # Admin self-removal would orphan the org; admin
         # departure is a separate (future) flow.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="cannot_remove_admin",
+            detail=ErrorCode.CANNOT_REMOVE_ADMIN,
         )
     member = (
         await db.execute(
@@ -490,7 +491,7 @@ async def remove_organization_member(
     if member is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="member_not_found",
+            detail=ErrorCode.MEMBER_NOT_FOUND,
         )
     await db.delete(member)
     await db.commit()
@@ -526,7 +527,7 @@ async def list_organization_members(
     if caller_membership is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_org_member",
+            detail=ErrorCode.NOT_ORG_MEMBER,
         )
 
     stmt = select(OrganizationMemberRow).where(
@@ -582,7 +583,7 @@ async def view_org_driver_profile(
     if caller_membership is None or caller_membership.role == "driver":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
     target_membership = (
         await db.execute(
@@ -598,7 +599,7 @@ async def view_org_driver_profile(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
     return await build_driver_profile_aggregate(db, user_id)
 
@@ -643,7 +644,7 @@ async def get_coach_dashboard(
     if caller_membership is None or caller_membership.role == "driver":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
 
     driver_user_ids = list(
@@ -782,7 +783,7 @@ async def get_org_metrics(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_authorized",
+            detail=ErrorCode.NOT_AUTHORIZED,
         )
 
     driver_user_ids = list(
@@ -929,7 +930,7 @@ async def delete_organization(
     if org is None or org.admin_user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="not_org_admin",
+            detail=ErrorCode.NOT_ORG_ADMIN,
         )
     # Tear down org-scoped rows explicitly so the deletion works
     # under SQLite (no FK enforcement) and stays self-documenting.

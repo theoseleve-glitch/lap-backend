@@ -29,6 +29,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
+from app.error_codes import ErrorCode
 from domain.readiness_recompute import recompute_driver_readiness
 from infra.orm import DriverProfile
 from infra.orm import TargetEvent as TargetEventRow
@@ -77,7 +78,7 @@ async def create_target_event(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
 
     row = TargetEventRow(
@@ -126,7 +127,7 @@ async def delete_target_event(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
     # Authz pin: filter by BOTH id and driver_id so an authenticated
     # user can never delete another driver's pin by guessing UUIDs.
@@ -142,7 +143,7 @@ async def delete_target_event(
     if result.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="target_event_not_found",
+            detail=ErrorCode.TARGET_EVENT_NOT_FOUND,
         )
     await db.commit()
     # T089 — readiness must reflect the unpin (target_event=None
@@ -168,7 +169,7 @@ async def list_target_events(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
     # Sort by starts_at ASC at the DB layer — soonest-first matches
     # the UI contract (clients display list[0] as "your next event").
@@ -207,7 +208,7 @@ async def get_target_event_countdown(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
     server_now = datetime.now(UTC)
     # Soonest upcoming: same selector recompute_driver_readiness
@@ -272,7 +273,7 @@ async def create_track_day(
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="driver_not_found",
+            detail=ErrorCode.DRIVER_NOT_FOUND,
         )
 
     row = TargetEventRow(

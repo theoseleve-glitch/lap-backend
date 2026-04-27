@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Config
 from app.deps import get_config, get_current_user, get_db
+from app.error_codes import ErrorCode
 from app.logging import logger
 from infra.notifications import (
     Notification,
@@ -79,7 +80,7 @@ def _resolve_price_id(plan: BillingPlan, cfg: Config) -> str:
     if not price_id:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="stripe_price_not_configured",
+            detail=ErrorCode.STRIPE_PRICE_NOT_CONFIGURED,
         )
     return price_id
 
@@ -137,7 +138,7 @@ async def create_billing_portal_session(
     if not user.stripe_customer_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="no_stripe_customer",
+            detail=ErrorCode.NO_STRIPE_CUSTOMER,
         )
     base = cfg.app_base_url.rstrip("/")
     portal = stripe.billing_portal.Session.create(
@@ -239,13 +240,13 @@ async def receive_stripe_webhook(
     if stripe_signature is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="missing_stripe_signature",
+            detail=ErrorCode.MISSING_STRIPE_SIGNATURE,
         )
     secret = cfg.stripe_webhook_secret.get_secret_value()
     if not secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="stripe_webhook_secret_not_configured",
+            detail=ErrorCode.STRIPE_WEBHOOK_SECRET_NOT_CONFIGURED,
         )
     payload = await request.body()
     try:
@@ -264,7 +265,7 @@ async def receive_stripe_webhook(
         logger.warning("stripe_webhook_signature_invalid", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="invalid_stripe_signature",
+            detail=ErrorCode.INVALID_STRIPE_SIGNATURE,
         ) from exc
     # Stripe's `event` is a StripeObject (not a dict) and resists
     # `.get()` / `dict(...)` conversion. Re-parse the raw JSON for

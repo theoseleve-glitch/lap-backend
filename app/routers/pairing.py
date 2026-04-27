@@ -9,6 +9,7 @@ from lap_schemas.v1 import (
 )
 
 from app.deps import get_current_user, get_pairing_store
+from app.error_codes import ErrorCode
 from infra.orm import User as UserRow
 from infra.pairing_store import PairingStoreProtocol
 
@@ -33,7 +34,7 @@ async def redeem_pairing(
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="invalid_pairing_token",
+            detail=ErrorCode.INVALID_PAIRING_TOKEN,
         )
     refresh_token = secrets.token_urlsafe(32)
     return PairingRedeemResponse(refresh_token=refresh_token)
