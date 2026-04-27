@@ -1,9 +1,10 @@
-"""T163-T166 (sprint2-backend) — organizations endpoints.
+"""T163-T167 (sprint2-backend) — organizations endpoints.
 
-T163 — POST /api/v1/orgs creates an Organization.
-T164 — POST /api/v1/orgs/:id/invites creates an invitation row.
-T165 — POST /api/v1/orgs/:id/invites/:token/accept redeems it.
+T163 — POST   /api/v1/orgs creates an Organization.
+T164 — POST   /api/v1/orgs/:id/invites creates an invitation row.
+T165 — POST   /api/v1/orgs/:id/invites/:token/accept redeems it.
 T166 — DELETE /api/v1/orgs/:id/members/:user_id removes member.
+T167 — GET    /api/v1/orgs/:id/members lists members under RLS.
 
 T163 endpoint:
   - assigns admin_user_id to the calling user
@@ -46,6 +47,17 @@ T166 endpoint:
   - invitations are not touched on remove (audit history;
     a removed member could be re-invited later)
 
+T167 endpoint:
+  - app-layer RLS over OrganizationMember rows
+  - 403 if caller is not a member of the org (status parity
+    with unknown-org to avoid org-existence leakage)
+  - role-based filtering: admin sees all roles; coach and
+    driver see only role=driver entries
+  - rationale: coaches work with drivers (their cohort is
+    visible) but visibility into peer coaches and the org-
+    billing-admin is admin-only. Drivers see their cohort
+    peers under the same rule.
+
 The schema-layer Pydantic enforces input bounds (name 1-120,
 seats_limit >= 1, plan ∈ {free, team, pro}, invite role ∈
 {coach, driver}, email shape sanity-checked) so the endpoint
@@ -68,6 +80,12 @@ from lap_schemas.v1 import (
     OrganizationInvitationCreate,
 )
 from lap_schemas.v1 import OrganizationInvitation as OrgInvitationSchema
+from lap_schemas.v1 import (
+    OrganizationMemberEntry as OrgMemberEntrySchema,
+)
+from lap_schemas.v1 import (
+    OrganizationMemberList as OrgMemberListSchema,
+)
 from lap_schemas.v1 import (
     OrganizationMembership as OrgMembershipSchema,
 )
@@ -351,3 +369,53 @@ async def remove_organization_member(
         )
     await db.delete(member)
     await db.commit()
+
+
+@router.get(
+    "/{org_id}/members",
+    response_model=OrgMemberListSchema,
+    responses={
+        403: {"description": "not_org_member"},
+    },
+)
+async def list_organization_members(
+    org_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OrgMemberListSchema:
+    # Caller-membership lookup doubles as the existence check:
+    # if the org doesn't exist or the caller isn't a member,
+    # the lookup returns None and we 403 (status parity).
+    caller_membership = (
+        await db.execute(
+            select(OrganizationMemberRow).where(
+                OrganizationMemberRow.org_id == org_id,
+                OrganizationMemberRow.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if caller_membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_org_member",
+        )
+
+    stmt = select(OrganizationMemberRow).where(
+        OrganizationMemberRow.org_id == org_id
+    )
+    if caller_membership.role != "admin":
+        # RLS: coach/driver see only drivers — admin and peer
+        # coaches are admin-visible only.
+        stmt = stmt.where(OrganizationMemberRow.role == "driver")
+    rows = (await db.execute(stmt)).scalars().all()
+    entries = tuple(
+        OrgMemberEntrySchema(
+            id=r.id,
+            org_id=r.org_id,
+            user_id=r.user_id,
+            role=r.role,
+            created_at=r.created_at,
+        )
+        for r in rows
+    )
+    return OrgMemberListSchema(entries=entries)
