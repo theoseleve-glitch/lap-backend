@@ -1,0 +1,37 @@
+id: "ad.weather_transition.wet_line_wrong"
+version: 1
+category: strategy
+subcategory: weather_transition
+difficulty: beginner
+
+detection:
+  signal: pct_corners_on_wrong_line_for_conditions
+  condition: "weather_transition_magnitude_pct >= 0.15 and pct_corners_on_wrong_line_for_conditions >= 0.30"
+  context:
+    must_have_channels: ["lap_time", "track_wetness", "racing_line_offset_m", "lap_number"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.30 = low, 0.50 = medium, 0.80 = high"
+
+explanation_template:
+  beginner: "The track wetness changed by {{weather_transition_magnitude_pct}} (rain coming in or surface drying out) and you stayed on the dry line through {{pct_corners_on_wrong_line_for_conditions}} of the corners — but the dry line is where the rubber sits, and rubber + water = lowest grip surface on track. The wet line is one or two car widths off the racing groove where there's no rubber, just clean tarmac. When rain arrives, move OFF the racing line (further off-line in slower corners, on the white line at apex in fast ones). When the track dries, move BACK to the racing line as soon as the dry strip widens. Don't wait for a moment to make the decision — pick a corner ahead, commit to the new line, recalibrate from there."
+  intermediate: "Weather transition magnitude {{weather_transition_magnitude_pct}}, wrong-line corner pct {{pct_corners_on_wrong_line_for_conditions}}. Distinct from `ad.grip_change.slow_to_adapt` (T151 — input recalibration) by surfacing the geometric line-choice failure mode: drivers who DID adapt brake markers and throttle profile to the new grip but stayed on the dry-line groove still pay the wrong-rubber penalty. T151 + T153 commonly co-fire when the driver was slow to adapt anything at all; when they fire together, T151's adaptive-recalibration drill is the upstream prescription priority — fixing the broader pattern resolves the line-specific symptom."
+  advanced: "Wetness transition pct {{weather_transition_magnitude_pct}}, wrong-line corner pct {{pct_corners_on_wrong_line_for_conditions}}. The mechanism: rubber on the racing groove is hydrophobic relative to clean tarmac, so a wet-on-rubber surface has roughly 60-70% the peak grip of a wet-on-clean surface. Drivers who default to 'racing line is fastest' apply a heuristic that's load-bearing in dry conditions and silently inverts in wet. The disciplined alternative is condition-conditional line selection: in wet, the line is wherever the surface is cleanest (the rain-line); in drying, the line is the widening dry strip. The 0.30 wrong-line threshold is one cohort-typical mis-line rate — below it the driver is correctly on-line for most corners (the 30% are usually the 1-2 corners where the rain-line is non-obvious); above it the pattern is generalized line-stickiness, not corner-specific judgment. Diagnostic priority: T151 > T153 when both fire — recalibration discipline is the cause; line-stickiness is the symptom."
+
+prescription:
+  drill_template_id: "drill.weather_transition_line_protocol"
+  expected_gain_kmh: "2-4"
+  success_condition:
+    metric: "pct_corners_on_wrong_line_for_conditions"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["wet-line discipline transfers — the rubber-vs-clean-tarmac grip differential is real on either platform. Sim drivers face title-dependent fidelity (some titles model rubbered-line wet grip realistically, others use a uniform wet-grip multiplier across the corner that hides the on/off-line distinction); the rule is most useful in titles with realistic rubber-line modeling. Real-car drivers face additional cold-tire effects in the first wet laps that compound the line-choice issue; the protocol applies but may need explicit tire-temp gates as well as line-choice gates."]

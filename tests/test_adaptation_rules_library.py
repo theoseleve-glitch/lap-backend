@@ -46,6 +46,7 @@ ADAPTATION_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "adaptation"
 
 _GRIP_CHANGE_RULE_ID = "ad.grip_change.slow_to_adapt"
 _SETUP_REGRESSION_RULE_ID = "ad.setup_change.regression"
+_WET_LINE_RULE_ID = "ad.weather_transition.wet_line_wrong"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -73,6 +74,16 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # driver/engineer kept the setup anyway.
     "setup_change_lap_time_regression_seconds": 0.35,
     "clean_lap_count_post_setup_change": 8,
+    # T153 — weather-transition line choice. Caller supplies the
+    # magnitude of track-wetness change between consecutive lap
+    # windows (rain start, dry-out) and the pct of corners during
+    # the transition where the driver was on the wrong line for
+    # current conditions (dry line in wet → no rubber/no grip;
+    # wet line in dry → off the racing groove). Distinct from
+    # T151 (input recalibration) by surfacing the geometric
+    # line-choice failure mode specifically.
+    "weather_transition_magnitude_pct": 0.30,
+    "pct_corners_on_wrong_line_for_conditions": 0.50,
 }
 
 
@@ -286,4 +297,96 @@ def test_setup_regression_silent_when_change_neutral_or_improvement() -> None:
         f"{_SETUP_REGRESSION_RULE_ID} fired on improved-pace setup — "
         f"coached revert on a setup change that made the driver "
         f"faster. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T153: ad.weather_transition.wet_line_wrong ----------------
+
+
+def test_wet_line_fires_on_combined_transition_and_wrong_line() -> None:
+    """Both signals firing: weather-transition magnitude 30% (well
+    above the 0.15 firing threshold — clear wetness shift, e.g.,
+    rain starting or track drying) AND 50% of corners on the
+    wrong line for current conditions (well above the 0.30 firing
+    threshold — driver isn't tracking the line that suits the
+    new conditions). Pin: the canonical "the line moved and you
+    didn't" pattern produces an insight, distinct from T151's
+    input-recalibration framing by surfacing the geometric line-
+    choice failure mode specifically — driver may have adapted
+    brake/throttle markers but stayed on the dry-line groove
+    after the rain came in (or the wet-line groove after dry-
+    out)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "weather_transition_magnitude_pct": 0.30,
+            "pct_corners_on_wrong_line_for_conditions": 0.50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WET_LINE_RULE_ID in fired_ids, (
+        f"expected {_WET_LINE_RULE_ID} to fire on combined "
+        f"large-transition + wrong-line context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_wet_line_silent_when_weather_stable() -> None:
+    """Driver on wrong line for 50% of corners but weather is
+    stable (transition magnitude only 5% — within track-evolution
+    noise, no actual rain start or dry-out). The wrong-line
+    behavior is then attributable to driver line preference,
+    setup-mismatch, or simply preferring a different reference
+    line — not a weather-transition response failure. The rule
+    must NOT fire — coaching "switch to the wet line" when there
+    is no wet-line situation would mis-attribute the cause. Pin:
+    the transition-magnitude guard separates weather-driven line-
+    choice failures from generic line-discipline issues (covered
+    by other rules)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "weather_transition_magnitude_pct": 0.05,
+            "pct_corners_on_wrong_line_for_conditions": 0.50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WET_LINE_RULE_ID not in fired_ids, (
+        f"{_WET_LINE_RULE_ID} fired on stable-weather context — "
+        f"mis-attributed line-choice issue to a non-existent "
+        f"weather transition. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_wet_line_silent_when_driver_already_on_correct_line() -> None:
+    """Clear weather transition (30% wetness change — rain coming
+    in or track drying) but driver only on wrong line for 10% of
+    corners (well below the 0.30 firing threshold — driver moved
+    to the right line for current conditions). The driver is
+    doing the right thing — fast line adaptation is correct
+    technique, not a coachable failure mode. The rule must NOT
+    fire — coaching "switch to the correct line" to a driver
+    already on the correct line would over-state the issue. Pin:
+    the wrong-line guard prevents firing on every weather
+    transition regardless of driver response. The rule targets
+    the slow-line-adaptation failure mode specifically, not
+    weather transitions in isolation."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "weather_transition_magnitude_pct": 0.30,
+            "pct_corners_on_wrong_line_for_conditions": 0.10,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WET_LINE_RULE_ID not in fired_ids, (
+        f"{_WET_LINE_RULE_ID} fired on driver already on correct "
+        f"line — coached line-switching to a driver who already "
+        f"adapted. Fired: {sorted(fired_ids)}"
     )

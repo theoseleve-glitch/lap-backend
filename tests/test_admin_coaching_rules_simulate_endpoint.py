@@ -424,6 +424,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # below the >=5 sample-size guard for defense in depth.)
     "setup_change_lap_time_regression_seconds": 0.05,
     "clean_lap_count_post_setup_change": 4,
+    # T153 weather-transition / wet-line signals at stable /
+    # correct-line values so `ad.weather_transition.wet_line_wrong`
+    # stays silent. (Both signals quiet — magnitude 0.05 is well
+    # below the >=0.15 firing threshold; wrong-line corner pct
+    # 0.10 is well below the >=0.30 firing threshold; either
+    # alone is load-bearing silencer.)
+    "weather_transition_magnitude_pct": 0.05,
+    "pct_corners_on_wrong_line_for_conditions": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -678,6 +686,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # firing fixture; both signals quiet independently.
     "setup_change_lap_time_regression_seconds": 0.05,
     "clean_lap_count_post_setup_change": 4,
+    # T153 weather-transition / wet-line signals at stable /
+    # correct-line values so `ad.weather_transition.wet_line_wrong`
+    # stays silent. Same shape as firing fixture; both signals
+    # quiet independently.
+    "weather_transition_magnitude_pct": 0.05,
+    "pct_corners_on_wrong_line_for_conditions": 0.10,
 }
 
 
