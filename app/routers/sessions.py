@@ -25,6 +25,7 @@ from lap_schemas.v1 import (
     StrategyEventCreate,
     StrategyPlan,
     StrategyPlanCreate,
+    StrategyTimelineResponse,
 )
 from lap_schemas.v1.action_prescription import ActionPrescriptionListItem
 from lap_schemas.v1.coaching_insight import CoachingInsight
@@ -626,4 +627,89 @@ async def create_strategy_event(
         at_lap=row.at_lap,
         details=row.details,
         created_at=row.created_at,
+    )
+
+
+@router.get(
+    "/{session_id}/strategy/timeline",
+    response_model=StrategyTimelineResponse,
+    responses={404: {"description": "session_not_found (or not owned)"}},
+)
+async def get_strategy_timeline(
+    session_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StrategyTimelineResponse:
+    """T100 — combined plan + actual timeline. Returns the
+    canonical pre-race plan (T096) plus the runtime event log
+    (T097) ordered by lap. UI renders them side-by-side; T101+
+    plan-vs-actual divergence scoring consumes the same shape.
+
+    Authz: same pattern as POST endpoints — only the owning
+    driver reads. Empty shape (plan=null, events=[]) for a
+    session with no strategy data; distinct from 404 so the
+    UI can show "no strategy recorded" vs "session not found".
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    session_row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if (
+        session_row is None
+        or profile is None
+        or session_row.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+    plan_row = (
+        await db.execute(
+            select(StrategyPlanRow).where(
+                StrategyPlanRow.session_id == session_id
+            )
+        )
+    ).scalar_one_or_none()
+    event_rows = (
+        await db.execute(
+            select(StrategyEventRow)
+            .where(StrategyEventRow.session_id == session_id)
+            .order_by(
+                StrategyEventRow.at_lap.asc(),
+                StrategyEventRow.created_at.asc(),
+            )
+        )
+    ).scalars().all()
+    return StrategyTimelineResponse(
+        plan=(
+            StrategyPlan(
+                id=plan_row.id,
+                session_id=plan_row.session_id,
+                created_at=plan_row.created_at,
+                planned_stints=plan_row.planned_stints,
+                planned_fuel_liters=plan_row.planned_fuel_liters,
+                planned_pit_laps=tuple(plan_row.planned_pit_laps),
+            )
+            if plan_row is not None
+            else None
+        ),
+        events=tuple(
+            StrategyEvent(
+                id=ev.id,
+                session_id=ev.session_id,
+                kind=ev.kind,  # type: ignore[arg-type]
+                at_lap=ev.at_lap,
+                details=ev.details,
+                created_at=ev.created_at,
+            )
+            for ev in event_rows
+        ),
     )
