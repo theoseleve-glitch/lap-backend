@@ -46,6 +46,7 @@ _STAIRCASE_RULE_ID = "th.staircase_pattern.uneven_modulation"
 _EARLY_FULL_RULE_ID = "th.early_full.before_apex"
 _UNDERUSE_RULE_ID = "th.full_throttle_underuse.straights"
 _LAP_VARIANCE_RULE_ID = "th.throttle_consistency.lap_variance"
+_EXIT_COMMIT_RULE_ID = "th.exit_commit.confidence_deficit"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -81,6 +82,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T119 — cross-lap throttle consistency signals.
     "throttle_trace_lap_variance_index": 0.45,
     "consecutive_clean_laps_compared": 5,
+    # T120 — exit commit / confidence-deficit signals.
+    "exit_throttle_commit_delay_ms": 500,
+    "available_grip_margin_pct": 0.40,
 }
 
 
@@ -794,4 +798,79 @@ def test_lap_variance_silent_when_driver_is_consistent() -> None:
         f"{_LAP_VARIANCE_RULE_ID} fired on consistent-driver "
         f"context — coached consistency to a consistent driver. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T120: th.exit_commit.confidence_deficit -------------------
+
+
+def test_exit_commit_fires_on_combined_late_commit_and_grip() -> None:
+    """Both signals firing: 500ms commit delay after apex (late
+    by ~30%) AND 40% grip margin still on the table at the
+    moment of commit (chassis was nowhere near the limit). Pin:
+    the canonical "could go but doesn't" confidence-deficit
+    pattern produces an insight rather than being missed because
+    the lap time looks "okay"."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "exit_throttle_commit_delay_ms": 500,
+            "available_grip_margin_pct": 0.40,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EXIT_COMMIT_RULE_ID in fired_ids, (
+        f"expected {_EXIT_COMMIT_RULE_ID} to fire on combined "
+        f"late-commit + grip-available context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_exit_commit_silent_when_grip_was_actually_at_limit() -> None:
+    """500ms late commit but grip margin only 0.10 (chassis was
+    near the limit — caution was justified, not a confidence
+    deficit). The rule must NOT fire — coaching "commit harder"
+    when the driver was already at the grip ceiling causes
+    crashes. Pin: the conjunction protects against confusing
+    correct-caution with confidence-deficit."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "exit_throttle_commit_delay_ms": 500,
+            "available_grip_margin_pct": 0.10,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EXIT_COMMIT_RULE_ID not in fired_ids, (
+        f"{_EXIT_COMMIT_RULE_ID} fired on at-limit-grip context "
+        f"— would coach a driver to push past the grip ceiling. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_exit_commit_silent_when_driver_committed_quickly() -> None:
+    """Grip margin 0.40 (plenty available) but commit delay only
+    150ms (driver committed quickly — they ARE using available
+    grip). The rule must NOT fire — quick commit with grip
+    margin remaining just means the corner has more grip than
+    the driver can extract through pure throttle (suspension
+    work, line, etc). Pin: the conjunction prevents flagging
+    quick-committing drivers."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "exit_throttle_commit_delay_ms": 150,
+            "available_grip_margin_pct": 0.40,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _EXIT_COMMIT_RULE_ID not in fired_ids, (
+        f"{_EXIT_COMMIT_RULE_ID} fired on quick-commit context "
+        f"— flagged a confident driver. Fired: {sorted(fired_ids)}"
     )

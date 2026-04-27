@@ -213,6 +213,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # silent.
     "throttle_trace_lap_variance_index": 0.15,
     "consecutive_clean_laps_compared": 5,
+    # T120 exit-commit / confidence-deficit signals at quick-
+    # commit values so `th.exit_commit.confidence_deficit`
+    # stays silent.
+    "exit_throttle_commit_delay_ms": 150,
+    "available_grip_margin_pct": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -284,6 +289,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # silent.
     "throttle_trace_lap_variance_index": 0.15,
     "consecutive_clean_laps_compared": 5,
+    # T120 exit-commit / confidence-deficit signals at quick-
+    # commit values so `th.exit_commit.confidence_deficit`
+    # stays silent.
+    "exit_throttle_commit_delay_ms": 150,
+    "available_grip_margin_pct": 0.10,
 }
 
 
