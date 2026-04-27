@@ -440,6 +440,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # silencer.)
     "rain_onset_rate_pct_per_lap": 0.02,
     "mistake_event_count_in_rain_onset_window": 0,
+    # T155 traffic-defense signals at clean-air / well-calibrated
+    # values so `ad.traffic_loss.defensive_excess` stays silent.
+    # (Both signals quiet — traffic-proximity pct 0.05 is well
+    # below the >=0.30 firing threshold; defensive cost 0.10s is
+    # well below the >=0.40s firing threshold; either alone is
+    # load-bearing silencer.)
+    "traffic_proximity_pct_lap": 0.05,
+    "defensive_lap_time_cost_seconds": 0.10,
 }
 
 # A context where every braking rule should be silent — values
@@ -706,6 +714,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # independently.
     "rain_onset_rate_pct_per_lap": 0.02,
     "mistake_event_count_in_rain_onset_window": 0,
+    # T155 traffic-defense signals at clean-air / well-calibrated
+    # values so `ad.traffic_loss.defensive_excess` stays silent.
+    # Same shape as firing fixture; both signals quiet
+    # independently.
+    "traffic_proximity_pct_lap": 0.05,
+    "defensive_lap_time_cost_seconds": 0.10,
 }
 
 

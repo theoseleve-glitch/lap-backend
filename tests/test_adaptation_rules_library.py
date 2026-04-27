@@ -48,6 +48,7 @@ _GRIP_CHANGE_RULE_ID = "ad.grip_change.slow_to_adapt"
 _SETUP_REGRESSION_RULE_ID = "ad.setup_change.regression"
 _WET_LINE_RULE_ID = "ad.weather_transition.wet_line_wrong"
 _RAIN_ONSET_RULE_ID = "ad.rain_start.tire_commitment_late"
+_TRAFFIC_DEFENSE_RULE_ID = "ad.traffic_loss.defensive_excess"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -96,6 +97,19 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # rather than just lap-time deficit.
     "rain_onset_rate_pct_per_lap": 0.15,
     "mistake_event_count_in_rain_onset_window": 4,
+    # T155 — traffic over-defending. Caller supplies the pct of
+    # lap-distance where competitors are within close range
+    # (real traffic situation, not clean-air running) and the
+    # lap-time cost in seconds attributed to defensive line /
+    # input choices vs the driver's own clean-air baseline. The
+    # rule fires when both hold — real traffic AND the defensive
+    # choices are costing meaningfully more than position
+    # protection is worth. Distinct from `rc.defensive_line_too_often`
+    # by being adaptation-driven: the failure mode is specifically
+    # over-calibrating the defense response in traffic, not a
+    # general defensive-line-frequency pattern.
+    "traffic_proximity_pct_lap": 0.45,
+    "defensive_lap_time_cost_seconds": 0.55,
 }
 
 
@@ -489,4 +503,92 @@ def test_rain_onset_silent_when_driver_pulled_back_correctly() -> None:
         f"{_RAIN_ONSET_RULE_ID} fired on driver who pulled back "
         f"correctly — coached commitment-pullback to a driver who "
         f"already adapted. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T155: ad.traffic_loss.defensive_excess --------------------
+
+
+def test_traffic_defense_fires_on_combined_traffic_and_defensive_cost() -> None:
+    """Both signals firing: 45% of lap-distance in close-traffic
+    range (well above the 0.30 firing threshold — real traffic,
+    not clean-air running) AND 0.55s of lap-time attributed to
+    defensive line/input choices vs clean-air baseline (well
+    above the 0.40s firing threshold — meaningful cost, not
+    noise). Pin: the canonical "you're defending harder than the
+    position is worth" pattern produces an insight, distinct from
+    `rc.defensive_line_too_often` which fires on overall
+    defensive-line frequency. T155 is the traffic-specific cost-
+    benefit framing."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "traffic_proximity_pct_lap": 0.45,
+            "defensive_lap_time_cost_seconds": 0.55,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TRAFFIC_DEFENSE_RULE_ID in fired_ids, (
+        f"expected {_TRAFFIC_DEFENSE_RULE_ID} to fire on combined "
+        f"high-traffic + high-defensive-cost context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_traffic_defense_silent_when_running_in_clean_air() -> None:
+    """Defensive lap-time cost 0.55s recorded but only 5% of lap
+    in close-traffic range — driver is mostly running in clean
+    air, so any "defensive" lap-time cost is mis-labeled. The
+    cost is then attributable to setup, line preference, or
+    clean-air pace decay — not traffic-driven over-defending. The
+    rule must NOT fire — coaching "defend less aggressively in
+    traffic" when the driver isn't really in traffic would mis-
+    attribute the cause. Pin: the traffic-proximity guard
+    separates traffic-adaptation failures from clean-air pace
+    issues (covered by other rules)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "traffic_proximity_pct_lap": 0.05,
+            "defensive_lap_time_cost_seconds": 0.55,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TRAFFIC_DEFENSE_RULE_ID not in fired_ids, (
+        f"{_TRAFFIC_DEFENSE_RULE_ID} fired on clean-air context — "
+        f"mis-attributed lap-time cost to a non-existent traffic "
+        f"situation. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_traffic_defense_silent_when_defensive_cost_well_calibrated() -> None:
+    """45% of lap in close-traffic range (real traffic) but
+    defensive lap-time cost only 0.10s — the driver is defending
+    appropriately, picking the cheap moments to defend and
+    ceding gracefully where it costs too much. The rule must
+    NOT fire — coaching "defend less" to a driver who is well-
+    calibrated would over-correct and could cost track position
+    needlessly. Pin: the defensive-cost guard prevents firing
+    on every traffic situation regardless of how the defense is
+    calibrated. The rule targets the specific over-defending
+    failure mode where the protection cost exceeds the
+    position-value benefit."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "traffic_proximity_pct_lap": 0.45,
+            "defensive_lap_time_cost_seconds": 0.10,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TRAFFIC_DEFENSE_RULE_ID not in fired_ids, (
+        f"{_TRAFFIC_DEFENSE_RULE_ID} fired on well-calibrated "
+        f"defender — coached defensive-cost reduction to a driver "
+        f"already calibrated. Fired: {sorted(fired_ids)}"
     )
