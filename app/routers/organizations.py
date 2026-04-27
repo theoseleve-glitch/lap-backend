@@ -1,4 +1,4 @@
-"""T163-T174 (sprint2-backend) — organizations endpoints.
+"""T163-T175 (sprint2-backend) — organizations endpoints.
 
 T163 — POST   /api/v1/orgs creates an Organization.
 T164 — POST   /api/v1/orgs/:id/invites creates an invitation row.
@@ -8,6 +8,7 @@ T167 — GET    /api/v1/orgs/:id/members lists members under RLS.
 T169 — GET    /api/v1/orgs/:id/drivers/:uid/profile coach view.
 T171 — GET    /api/v1/orgs/:id/dashboard coach roster.
 T174 — GET    /api/v1/orgs/:id/metrics aggregate KPIs.
+T175 — PATCH  /api/v1/orgs/:id/branding admin updates branding.
 
 T163 endpoint:
   - assigns admin_user_id to the calling user
@@ -99,6 +100,7 @@ from lap_schemas.v1 import (
     CoachDashboardDriverEntry,
     CoachDashboardResponse,
     DriverProfileAggregate,
+    OrganizationBrandingUpdate,
     OrganizationCreate,
     OrganizationInvitationCreate,
     OrgMetrics,
@@ -194,6 +196,52 @@ async def create_organization(
         admin_user_id=org.admin_user_id,
         seats_limit=org.seats_limit,
         created_at=org.created_at,
+        branding_logo_url=org.branding_logo_url,
+    )
+
+
+@router.patch(
+    "/{org_id}/branding",
+    response_model=OrganizationSchema,
+    responses={
+        403: {"description": "not_org_admin"},
+    },
+)
+async def patch_organization_branding(
+    org_id: UUID,
+    body: OrganizationBrandingUpdate,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OrganizationSchema:
+    """T175 — admin updates org branding metadata.
+
+    Only the org admin can edit branding. Non-admin members
+    (coach, driver) and outsiders all 403 with status parity
+    on unknown-org.
+    """
+    org = (
+        await db.execute(
+            select(OrganizationRow).where(
+                OrganizationRow.id == org_id
+            )
+        )
+    ).scalar_one_or_none()
+    if org is None or org.admin_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_org_admin",
+        )
+    org.branding_logo_url = body.branding_logo_url
+    await db.commit()
+    await db.refresh(org)
+    return OrganizationSchema(
+        id=org.id,
+        name=org.name,
+        plan=org.plan,
+        admin_user_id=org.admin_user_id,
+        seats_limit=org.seats_limit,
+        created_at=org.created_at,
+        branding_logo_url=org.branding_logo_url,
     )
 
 

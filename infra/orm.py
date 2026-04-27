@@ -1002,6 +1002,11 @@ class Organization(Base):
     stripe_subscription_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True
     )
+    # T175 — admin-uploaded logo URL. Storage-only; the upload
+    # path (CDN/S3/data uri) is the client's concern.
+    branding_logo_url: Mapped[str | None] = mapped_column(
+        String(2048), nullable=True
+    )
 
 
 class OrganizationMember(Base):
