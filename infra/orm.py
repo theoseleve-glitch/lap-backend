@@ -745,6 +745,62 @@ class StrategyPlan(Base):
     )
 
 
+class StrategyEvent(Base):
+    """T097 — append-only timeline for runtime strategy.
+
+    Pairs with T096's StrategyPlan (the canonical pre-race
+    intent): this table is the runtime story — when the plan
+    was set, when the driver armed an alternate strategy, when
+    each pit stop happened, when stints ended, when full course
+    yellow / safety car periods began.
+
+    `kind` is a free-text String(16) — the spec set ({plan,
+    armed, pit, stint_end, fcy, sc}) is enforced in the Pydantic
+    request schema landing with T099 so a useful 422 surfaces
+    instead of a CHECK-constraint reject.
+
+    `details` carries the kind-specific payload (JSON dict).
+    Held loosely on purpose: the contents evolve faster than the
+    table shape (e.g., "armed" payloads gain new fields as the
+    UI exposes more strategy choices), and pulling each
+    sub-shape into its own column would explode the table for
+    no read benefit.
+
+    NOT unique on (session_id, at_lap, kind): two FCYs can both
+    start at lap 5 in chaotic conditions; two pit stops on the
+    same lap is real (formation/false-start); the timeline must
+    record both.
+
+    Server-stamped `created_at` for tie-breaking same-lap events
+    — appended-order resolves an "armed → pit" pair where both
+    landed on lap 30.
+
+    CASCADE delete from sessions: GDPR right-to-erasure.
+
+    No additional indexes; the only read shape today is
+    "load timeline for session X ordered by lap" which the
+    session_id FK index supports.
+    """
+
+    __tablename__ = "strategy_events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("sessions.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16))
+    at_lap: Mapped[int] = mapped_column(Integer)
+    details: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class TargetEvent(Base):
     """T081 — driver-pinned upcoming sim event or real-life session.
 
