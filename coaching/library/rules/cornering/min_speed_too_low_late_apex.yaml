@@ -1,0 +1,37 @@
+id: "cs.min_speed.too_low_late_apex"
+version: 1
+category: technique
+subcategory: min_speed
+difficulty: beginner
+
+detection:
+  signal: min_corner_speed_deficit_pct
+  condition: "min_corner_speed_deficit_pct >= 0.05 and apex_position_pct_through_corner >= 0.60"
+  context:
+    must_have_channels: ["speed", "steering", "g_lat"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.05 = low, 0.08 = medium, 0.12 = high"
+
+explanation_template:
+  beginner: "On {{corner}} your minimum speed was {{min_corner_speed_deficit_pct}} below reference, and you apexed at {{apex_position_pct_through_corner}} of the corner — well past the geometric middle. You rotated late, so the car was still turning when it should have been accelerating. Apex earlier and let the throttle do the work past the apex."
+  intermediate: "Late apex on {{corner}} costing min speed — apex at {{apex_position_pct_through_corner}}, deficit {{min_corner_speed_deficit_pct}}. Late apex shortens the exit straight available for acceleration AND keeps the car at low speed longer; recover by braking earlier so you can rotate the car to the geometric apex."
+  advanced: "Late-apex min-speed deficit on {{corner}}: apex_pos={{apex_position_pct_through_corner}}, deficit={{min_corner_speed_deficit_pct}}. Each 5% of late apex past geometric middle on a medium-priority corner costs ~0.08-0.15s; trade later brake release for earlier rotation, accept slightly higher entry-zone risk to recover apex placement."
+
+prescription:
+  drill_template_id: "drill.geometric_apex_anchor"
+  expected_gain_kmh: "2-4"
+  success_condition:
+    metric: "apex_position_pct_through_corner"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["apex placement is geometric and platform-agnostic — late-apex habits transfer well between sim and real, but the drill targets may need to soften slightly in real cars where rotation is grip-limited rather than physics-pure."]

@@ -1,0 +1,169 @@
+"""T121+ (sprint2-backend) — cornering / minimum-speed rules library.
+
+Authors `coaching/library/rules/cornering/` subtree; T121 lands the
+first rule (`cs.min_speed.too_low_late_apex`). Block H grows
+this directory across T121-T130 (10 cornering rules).
+
+Pinned behaviors:
+  - directory loads cleanly (every YAML well-formed, RuleSpec-valid)
+  - at least one cornering rule exists (T121 acceptance)
+  - every rule's id starts with `cs.` (namespacing — prevents a
+    future copy-paste from `th.*` or `br.*` from silently shadowing
+    via the loader's id-uniqueness check)
+  - every rule is in the `technique` category — cornering line/
+    apex/min-speed is single-corner skill, not multi-session strategy
+  - the late-apex rule fires when both conditions hold:
+    min_corner_speed_deficit_pct >= 0.05 AND apex_position_pct_through_corner >= 0.60
+  - speed-on-pace + late apex stays silent — late apex that didn't
+    cost min speed isn't actionable (could be a deliberate
+    late-apex line on a long-exit corner)
+  - speed-deficit + on-time apex stays silent — speed deficit from
+    another cause (entry, setup, grip) must NOT be mis-attributed
+    to apex placement
+
+Mutation: relaxing either threshold would flag drivers with a
+deliberate late-apex line that pays off in exit speed; dropping
+the conjunction would mis-attribute setup/grip-driven speed
+deficits to apex technique.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from coaching.library.rule_loader import load_rules
+from coaching.library.rule_runner import run_rules
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CORNERING_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "cornering"
+
+_LATE_APEX_RULE_ID = "cs.min_speed.too_low_late_apex"
+
+
+# Template vars referenced by the rule's explanations. Any
+# firing-path test must carry these or the runner raises
+# InsightRenderError.
+_TEMPLATE_VARS: dict[str, Any] = {
+    "corner": "Turn 4",
+    "min_corner_speed_deficit_pct": 0.08,
+    "apex_position_pct_through_corner": 0.70,
+}
+
+
+def test_cornering_rules_directory_loads_cleanly() -> None:
+    """Every cornering YAML must validate against RuleSpec. Pin: a
+    malformed YAML or schema violation would crash the engine at
+    startup; the loader must never raise on this path."""
+    rules = load_rules(CORNERING_DIR)
+    assert rules, "expected at least one cornering rule"
+
+
+def test_at_least_one_cornering_rule_authored() -> None:
+    """T121 acceptance: at least one rule. Block H sets the
+    runway for 10 cornering rules (T121-T130)."""
+    rules = load_rules(CORNERING_DIR)
+    assert len(rules) >= 1, (
+        f"expected at least 1 cornering rule, found "
+        f"{len(rules)}: {[r.id for r in rules]}"
+    )
+
+
+def test_every_cornering_rule_id_starts_with_cs_prefix() -> None:
+    """Prefix collision check. A future contributor copying a
+    `th.*` or `br.*` template into the cornering dir without
+    renaming the id would silently shadow another namespace via
+    the loader's id-uniqueness check, and the rules engine would
+    misroute evidence. Pin the namespacing convention."""
+    rules = load_rules(CORNERING_DIR)
+    bad = [r.id for r in rules if not r.id.startswith("cs.")]
+    assert not bad, f"non-cornering ids in cornering dir: {bad}"
+
+
+def test_every_cornering_rule_is_in_technique_category() -> None:
+    """Cornering line/apex is single-corner skill execution, not
+    multi-session strategy. Calling these `strategy` would mis-
+    rank them in the prescription queue (which separates strategic
+    from tactical drills)."""
+    rules = load_rules(CORNERING_DIR)
+    bad = [
+        (r.id, r.category) for r in rules if r.category != "technique"
+    ]
+    assert not bad, (
+        f"cornering rules with non-technique category: {bad}"
+    )
+
+
+# -- T121: cs.min_speed.too_low_late_apex ----------------------
+
+
+def test_late_apex_fires_on_combined_speed_deficit_and_late_apex() -> None:
+    """Both signals firing: min-speed deficit 0.08 (8% below
+    reference — clearly slow) AND apex at 70% through the corner
+    (well past the 60% late-apex threshold). Pin: the canonical
+    "rotated late so you killed the apex" pattern produces an
+    insight rather than firing on every slow corner regardless
+    of cause."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "min_corner_speed_deficit_pct": 0.08,
+            "apex_position_pct_through_corner": 0.70,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_APEX_RULE_ID in fired_ids, (
+        f"expected {_LATE_APEX_RULE_ID} to fire on combined "
+        f"speed-deficit + late-apex context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_late_apex_silent_when_speed_on_pace() -> None:
+    """Apex at 70% (late) but speed deficit only 0.01 (driver
+    apexed late but it didn't cost min speed — could be a long-
+    exit corner that rewards a deliberate late apex). The rule
+    must NOT fire — late apex without a speed cost isn't a
+    mistake. Pin: the conjunction prevents flagging deliberate
+    late-apex lines that pay off in exit."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "min_corner_speed_deficit_pct": 0.01,
+            "apex_position_pct_through_corner": 0.70,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_APEX_RULE_ID not in fired_ids, (
+        f"{_LATE_APEX_RULE_ID} fired on late-apex / on-pace "
+        f"context — flagged a deliberate late-apex line. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_late_apex_silent_when_apex_on_time() -> None:
+    """Speed deficit 0.08 (driver IS slow) but apex at 50%
+    (geometric middle — apex placement is correct). The rule
+    must NOT fire — speed deficit must come from elsewhere
+    (entry technique, setup, grip), and coaching "you apexed
+    late" would be wrong. Pin: the conjunction prevents mis-
+    attributing speed deficits to apex placement."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "min_corner_speed_deficit_pct": 0.08,
+            "apex_position_pct_through_corner": 0.50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LATE_APEX_RULE_ID not in fired_ids, (
+        f"{_LATE_APEX_RULE_ID} fired on slow-but-on-time-apex "
+        f"context — mis-attributed speed deficit to apex placement. "
+        f"Fired: {sorted(fired_ids)}"
+    )

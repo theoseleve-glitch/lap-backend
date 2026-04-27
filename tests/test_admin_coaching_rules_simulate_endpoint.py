@@ -218,6 +218,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # stays silent.
     "exit_throttle_commit_delay_ms": 150,
     "available_grip_margin_pct": 0.10,
+    # T121 cornering / late-apex signals at on-pace + on-time
+    # values so `cs.min_speed.too_low_late_apex` stays silent.
+    "min_corner_speed_deficit_pct": 0.01,
+    "apex_position_pct_through_corner": 0.50,
 }
 
 # A context where every braking rule should be silent — values
@@ -294,6 +298,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # stays silent.
     "exit_throttle_commit_delay_ms": 150,
     "available_grip_margin_pct": 0.10,
+    # T121 cornering / late-apex signals at on-pace + on-time
+    # values so `cs.min_speed.too_low_late_apex` stays silent.
+    "min_corner_speed_deficit_pct": 0.01,
+    "apex_position_pct_through_corner": 0.50,
 }
 
 
