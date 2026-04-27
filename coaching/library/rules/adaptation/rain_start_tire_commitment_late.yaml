@@ -1,0 +1,37 @@
+id: "ad.rain_start.tire_commitment_late"
+version: 1
+category: strategy
+subcategory: rain_onset
+difficulty: beginner
+
+detection:
+  signal: mistake_event_count_in_rain_onset_window
+  condition: "rain_onset_rate_pct_per_lap >= 0.08 and mistake_event_count_in_rain_onset_window >= 3"
+  context:
+    must_have_channels: ["track_wetness", "lap_time", "lockup_event", "slide_event", "off_track_event", "lap_number"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 3 = low, 5 = medium, 8 = high"
+
+explanation_template:
+  beginner: "Rain came in at {{rain_onset_rate_pct_per_lap}} per lap — the surface was changing fast under you — and you stacked up {{mistake_event_count_in_rain_onset_window}} mistakes (lockups, slides, off-tracks) before pulling back. Wet grip drops fast; same brake pressure that's confidence-building in dry locks the wheels in wet, same throttle that's controllable in dry breaks traction. Build a rain-onset reflex: at the first sign of rain (first drop on visor, first sector loss), brake 5m earlier and roll throttle 20% slower for one lap, then re-calibrate from there. Don't wait for the first lockup to tell you the grip moved — by then you've spent commitment you didn't have."
+  intermediate: "Rain-onset rate {{rain_onset_rate_pct_per_lap}}, mistakes {{mistake_event_count_in_rain_onset_window}}. Distinct from `ad.grip_change.slow_to_adapt` (T151 — broad input recalibration delay across any grip-change) and `ad.weather_transition.wet_line_wrong` (T153 — geometric line choice in transitions) by surfacing the specific mistake-event signature of dry-pace commitment into rapidly-falling wet grip. Rain onset is the asymmetric direction of grip change: dry-out is forgiving (driver pushes harder, finds new limit gradually), rain start is unforgiving (commitment expended on dry-grip assumption produces mistakes the moment grip drops below input demand). T151 and T154 commonly co-fire when the pattern is broad slow-adaptation; T154 alone fires when the driver adapted lap-time generally but still over-committed on individual braking events."
+  advanced: "Rain rate {{rain_onset_rate_pct_per_lap}} pct/lap, mistakes {{mistake_event_count_in_rain_onset_window}}. The mechanism: peak μ in wet drops non-linearly with surface-water depth, with a knee around 1mm of standing water where μ falls 30-40% in a single lap of rainfall. Drivers calibrating commitment from prior-lap feedback are inherently 1 lap behind in this regime — by the time the lockup-on-the-prior-lap update lands, the surface has degraded further. The disciplined alternative is anticipatory pullback: when rain begins (visor, sector deltas, radio), one explicit lap of pulled-back commitment (brake 5-10m earlier, throttle 20-30% slower) before resuming feedback-driven calibration. Calibration: 0.08 pct/lap onset rate is one cohort-typical light-shower threshold; below it the surface is changing slowly enough for feedback-driven adaptation; above it anticipatory pullback dominates. The 3-event mistake threshold aligns with T144's lockup-pattern detection — single lockups recover, patterns indicate systemic over-commitment. Diagnostic priority: T154 > T151 > T153 when all three fire — rain-onset commitment is the most asymmetric / costliest failure to fix; line and broader recalibration follow."
+
+prescription:
+  drill_template_id: "drill.rain_onset_commitment_pullback"
+  expected_gain_kmh: "2-5"
+  success_condition:
+    metric: "mistake_event_count_in_rain_onset_window"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["rain-onset commitment-pullback discipline transfers — the asymmetric grip-drop physics is real on either platform. Sim drivers face title-dependent fidelity (some titles model the non-linear water-depth knee accurately, others use a simplified linear wet-grip multiplier that hides the abrupt drop); the rule is most useful in titles with realistic dynamic-weather modeling. Real-car drivers face additional vision-impairment effects (visor wetting, spray) that compound the commitment issue; the protocol applies but may need explicit visibility gates as well as grip gates. Real-car practice also benefits from the bodily 'first-drop' cue (rain on visor) that's absent in most sim setups — sim drivers must rely more on sector-delta and dashboard cues."]

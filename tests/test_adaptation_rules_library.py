@@ -47,6 +47,7 @@ ADAPTATION_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "adaptation"
 _GRIP_CHANGE_RULE_ID = "ad.grip_change.slow_to_adapt"
 _SETUP_REGRESSION_RULE_ID = "ad.setup_change.regression"
 _WET_LINE_RULE_ID = "ad.weather_transition.wet_line_wrong"
+_RAIN_ONSET_RULE_ID = "ad.rain_start.tire_commitment_late"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -84,6 +85,17 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # line-choice failure mode specifically.
     "weather_transition_magnitude_pct": 0.30,
     "pct_corners_on_wrong_line_for_conditions": 0.50,
+    # T154 — rain-start commitment failure. Caller supplies the
+    # rate of wetness increase per lap (rain coming in fast, grip
+    # dropping rapidly) and the count of mistake events (lockups,
+    # slides, offs) during the rain-onset window. Distinct from
+    # T151 (broad slow-to-adapt) and T153 (wrong line) by surfacing
+    # the specific mistake-event signature: driver kept pushing
+    # dry-pace brake/throttle commitment into rapidly-dropping
+    # wet grip, and the consequence shows up as concrete errors
+    # rather than just lap-time deficit.
+    "rain_onset_rate_pct_per_lap": 0.15,
+    "mistake_event_count_in_rain_onset_window": 4,
 }
 
 
@@ -389,4 +401,92 @@ def test_wet_line_silent_when_driver_already_on_correct_line() -> None:
         f"{_WET_LINE_RULE_ID} fired on driver already on correct "
         f"line — coached line-switching to a driver who already "
         f"adapted. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T154: ad.rain_start.tire_commitment_late ------------------
+
+
+def test_rain_onset_fires_on_combined_rain_rate_and_mistakes() -> None:
+    """Both signals firing: rain coming in at 15% wetness per lap
+    (well above the 0.08 firing threshold — clear rain start, not
+    damp patches) AND 4 mistake events during the rain-onset
+    window (well above the 3-event firing threshold — pattern,
+    not one-off). Pin: the canonical "you kept pushing as the
+    rain came in and paid for it in lockups/slides/offs" pattern
+    produces an insight, distinct from T151's input-recalibration
+    framing (broad lap-time deficit) and T153's geometric framing
+    (wrong line). T154 surfaces the specific mistake-event
+    signature of dry-pace commitment in dropping grip."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "rain_onset_rate_pct_per_lap": 0.15,
+            "mistake_event_count_in_rain_onset_window": 4,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _RAIN_ONSET_RULE_ID in fired_ids, (
+        f"expected {_RAIN_ONSET_RULE_ID} to fire on combined "
+        f"high-rain-rate + high-mistake-count context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_rain_onset_silent_when_no_rain_start() -> None:
+    """Plenty of mistakes (4) but rain-onset rate only 0.02
+    (essentially stable conditions — no rain start, maybe damp
+    patches at most). The mistakes are then attributable to
+    driver-skill issues, cold tires, or setup — not commitment-
+    vs-falling-wet-grip mismatch. The rule must NOT fire —
+    coaching "pull back commitment for the rain" when there is
+    no rain coming in would mis-attribute the cause and waste the
+    operator's attention. Pin: the rain-onset-rate guard
+    separates rain-start commitment failures from generic mistake
+    patterns (covered by skill/setup rules)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "rain_onset_rate_pct_per_lap": 0.02,
+            "mistake_event_count_in_rain_onset_window": 4,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _RAIN_ONSET_RULE_ID not in fired_ids, (
+        f"{_RAIN_ONSET_RULE_ID} fired on stable-weather context — "
+        f"mis-attributed mistake pattern to a non-existent rain "
+        f"start. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_rain_onset_silent_when_driver_pulled_back_correctly() -> None:
+    """Clear rain start (15% wetness per lap — grip dropping
+    fast) but only 0 mistake events during the rain-onset window —
+    the driver pulled back commitment immediately and avoided
+    lockups, slides, and offs. The driver is doing the right
+    thing — fast pullback is correct technique. The rule must
+    NOT fire — coaching "pull back commitment for the rain" to a
+    driver who already pulled back would over-state the issue
+    and waste attention. Pin: the mistake-count guard prevents
+    firing on every rain-onset event regardless of driver
+    response. The rule targets the late-pullback failure mode
+    specifically, not rain onset in isolation."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "rain_onset_rate_pct_per_lap": 0.15,
+            "mistake_event_count_in_rain_onset_window": 0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _RAIN_ONSET_RULE_ID not in fired_ids, (
+        f"{_RAIN_ONSET_RULE_ID} fired on driver who pulled back "
+        f"correctly — coached commitment-pullback to a driver who "
+        f"already adapted. Fired: {sorted(fired_ids)}"
     )

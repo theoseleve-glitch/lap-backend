@@ -432,6 +432,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # alone is load-bearing silencer.)
     "weather_transition_magnitude_pct": 0.05,
     "pct_corners_on_wrong_line_for_conditions": 0.10,
+    # T154 rain-start commitment signals at stable / no-mistake
+    # values so `ad.rain_start.tire_commitment_late` stays silent.
+    # (Both signals quiet — onset rate 0.02 is well below the
+    # >=0.08 firing threshold; mistake count 0 is well below the
+    # >=3 firing threshold; either alone is load-bearing
+    # silencer.)
+    "rain_onset_rate_pct_per_lap": 0.02,
+    "mistake_event_count_in_rain_onset_window": 0,
 }
 
 # A context where every braking rule should be silent — values
@@ -692,6 +700,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # quiet independently.
     "weather_transition_magnitude_pct": 0.05,
     "pct_corners_on_wrong_line_for_conditions": 0.10,
+    # T154 rain-start commitment signals at stable / no-mistake
+    # values so `ad.rain_start.tire_commitment_late` stays silent.
+    # Same shape as firing fixture; both signals quiet
+    # independently.
+    "rain_onset_rate_pct_per_lap": 0.02,
+    "mistake_event_count_in_rain_onset_window": 0,
 }
 
 
