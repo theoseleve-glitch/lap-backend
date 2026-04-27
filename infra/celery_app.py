@@ -115,6 +115,15 @@ celery_app.conf.beat_schedule = {
         "task": "infra.celery_app.hourly_event_notifications",
         "schedule": crontab(minute=0),
     },
+    # T196 (sprint2) — weekly Monday 05:00 UTC data-retention sweep.
+    # Sits after the 04:00 cohort refresh (which reads sessions for
+    # opt-in drivers) so the two never contend on overlapping rows.
+    # Idempotent — already-anonymized rows skipped, count returned
+    # is "newly scrubbed this run".
+    "weekly-data-retention-anonymize": {
+        "task": "infra.celery_app.weekly_data_retention_anonymize",
+        "schedule": crontab(hour=5, minute=0, day_of_week=1),
+    },
 }
 celery_app.conf.timezone = "UTC"
 
@@ -640,3 +649,33 @@ def hourly_event_notifications() -> str:
     sent = asyncio.run(_run_event_notifications())
     logger.info("event_notifications.run", sent=sent)
     return f"sent={sent}"
+
+
+async def _run_data_retention_anonymize() -> int:
+    """T196 cron body: scrub the manifest of opted-out drivers'
+    sessions older than the retention window. Returns the count
+    actually touched this run, logged for ops visibility."""
+    from datetime import UTC, datetime
+
+    from infra.data_retention import anonymize_old_sessions
+
+    db_url = os.environ["DATABASE_URL"]
+    engine = make_engine(db_url)
+    try:
+        factory = make_session_factory(engine)
+        async with factory() as db:
+            return await anonymize_old_sessions(
+                db, now=datetime.now(UTC)
+            )
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task(name="infra.celery_app.weekly_data_retention_anonymize")  # type: ignore[untyped-decorator]
+def weekly_data_retention_anonymize() -> str:
+    """Beat-triggered weekly Monday 05:00 UTC. Anonymizes
+    opted-out drivers' sessions older than the retention window
+    (default 2 years; see infra.data_retention)."""
+    n = asyncio.run(_run_data_retention_anonymize())
+    logger.info("data_retention_anonymize.run", anonymized=n)
+    return f"anonymized={n}"
