@@ -53,6 +53,7 @@ _NEW_TRACK_RULE_ID = "ad.new_track.learning_rate_slow"
 _CAR_CHANGE_RULE_ID = "ad.car_change.transfer_gap"
 _QUALI_RACE_DELTA_RULE_ID = "ad.qualifying_vs_race.pace_delta"
 _PRESSURE_RESPONSE_RULE_ID = "ad.pressure_response.error_rate_spike"
+_NIGHT_DRIVING_RULE_ID = "ad.night_driving.pace_drop"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -157,6 +158,17 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # pressure does.
     "pressure_context_score": 0.80,
     "error_rate_pct_above_low_pressure_baseline": 0.75,
+    # T160 — night-driving pace drop (closes Block I). Caller
+    # supplies the visibility deficit pct vs day reference
+    # (>=0.40 means at least 40% darker than day baseline — real
+    # night, not just dusk) and the lap-time deficit pct vs
+    # day-equivalent baseline (same track / car / fuel / tire,
+    # >=0.015 means 1.5%+ slower than day pace). Distinct from
+    # T156-T159 by attributing specifically to visibility-
+    # constrained adaptation (depth perception, brake-marker
+    # visibility, glare from headlights / kerbs).
+    "night_visibility_deficit_pct": 0.60,
+    "lap_time_pct_above_day_baseline": 0.025,
 }
 
 
@@ -976,4 +988,88 @@ def test_pressure_response_silent_when_driver_handles_pressure_well() -> None:
         f"{_PRESSURE_RESPONSE_RULE_ID} fired on driver who handles "
         f"pressure well — coached pressure-response protocol to a "
         f"driver already calibrated. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T160: ad.night_driving.pace_drop --------------------------
+
+
+def test_night_driving_fires_on_combined_low_visibility_and_pace_drop() -> None:
+    """Both signals firing: visibility deficit 60% vs day baseline
+    (well above the 0.40 firing threshold — real night, not just
+    overcast/dusk) AND lap-time 2.5% above day-equivalent
+    baseline (well above the 0.015 firing threshold — meaningful
+    night-pace deficit, not noise). Pin: the canonical "you slow
+    down at night more than you should" pattern produces an
+    insight, distinct from T156-T159 by attributing specifically
+    to visibility-constrained adaptation (brake-marker
+    visibility, depth perception, headlight glare)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "night_visibility_deficit_pct": 0.60,
+            "lap_time_pct_above_day_baseline": 0.025,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _NIGHT_DRIVING_RULE_ID in fired_ids, (
+        f"expected {_NIGHT_DRIVING_RULE_ID} to fire on combined "
+        f"low-visibility + pace-drop context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_night_driving_silent_when_day_session() -> None:
+    """Lap-time 2.5% above day baseline but visibility deficit
+    only 5% (essentially day session — overcast at most). The
+    pace deficit is then attributable to setup, traffic, fuel
+    load, or other day-session factors — not night adaptation.
+    The rule must NOT fire — coaching "use the night-driving
+    visual protocol" to a driver in a day session would mis-
+    attribute the cause and waste their attention. Pin: the
+    visibility-deficit guard separates night-adaptation failures
+    from generic pace issues (covered by other rules)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "night_visibility_deficit_pct": 0.05,
+            "lap_time_pct_above_day_baseline": 0.025,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _NIGHT_DRIVING_RULE_ID not in fired_ids, (
+        f"{_NIGHT_DRIVING_RULE_ID} fired on day-session context — "
+        f"mis-attributed pace deficit to a non-existent night "
+        f"context. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_night_driving_silent_when_pace_holds_at_night() -> None:
+    """Real night session (60% visibility deficit) but lap-time
+    only 0.3% above day baseline — the driver adapted well to
+    the night context, holding day-equivalent pace. The rule must
+    NOT fire — coaching "use the night-driving visual protocol"
+    to a driver who already adapted would over-state the issue.
+    Pin: the pace-drop guard prevents firing on every night
+    session regardless of how the driver adapted. The rule
+    targets the specific night-pace-deficit failure mode, not
+    night sessions in isolation."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "night_visibility_deficit_pct": 0.60,
+            "lap_time_pct_above_day_baseline": 0.003,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _NIGHT_DRIVING_RULE_ID not in fired_ids, (
+        f"{_NIGHT_DRIVING_RULE_ID} fired on driver holding day-"
+        f"equivalent pace at night — coached night-protocol to a "
+        f"driver already adapted. Fired: {sorted(fired_ids)}"
     )

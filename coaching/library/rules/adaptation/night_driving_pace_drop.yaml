@@ -1,0 +1,37 @@
+id: "ad.night_driving.pace_drop"
+version: 1
+category: strategy
+subcategory: night_driving
+difficulty: beginner
+
+detection:
+  signal: lap_time_pct_above_day_baseline
+  condition: "night_visibility_deficit_pct >= 0.40 and lap_time_pct_above_day_baseline >= 0.015"
+  context:
+    must_have_channels: ["lap_time", "ambient_light", "session_id", "lap_number"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 1
+    window_days: 30
+
+severity_rule: "linear, 0.015 = low, 0.030 = medium, 0.060 = high"
+
+explanation_template:
+  beginner: "At night ({{night_visibility_deficit_pct}} less visibility than day) you lost {{lap_time_pct_above_day_baseline}} lap-time vs your day pace at the same track. Night driving rewards different references: brake markers vanish into shadow, depth perception flattens, headlight beams highlight the next 80m and nothing beyond. The day-pace reflexes don't transfer cleanly. The drill: pre-session, identify night-visible reference points for each braking zone (kerb edges that catch headlights, pit-wall reflectors, large signage with retroreflective coating). Use those references explicitly for the first 5-10 laps, then transfer the rest of the lap calibration off those anchor points."
+  intermediate: "Night-pace deficit {{lap_time_pct_above_day_baseline}}, visibility deficit {{night_visibility_deficit_pct}}. Distinct from T156 (track-learning) and T157 (car-transfer) by attributing specifically to visibility-constrained adaptation: same track, same car, the only thing that changed is the lighting. Common night-specific failure modes: (a) brake-marker fade — paint/markers visible by day vanish in headlight cones; (b) depth-perception flatten — distance-judgment relies more on visual cues that night-light degrades; (c) glare-induced fixation — the bright headlight beam pulls eye attention forward, reducing peripheral and through-corner vision. Drill targets explicit night-visible reference identification rather than generic 'drive slower' coaching."
+  advanced: "Pace deficit {{lap_time_pct_above_day_baseline}}, visibility {{night_visibility_deficit_pct}}. Cognitive frame: visual perception bottlenecks shift at night — the rod-vs-cone retinal balance favors low-light sensitivity but loses color discrimination and reduces effective acuity, while the optic-flow cues drivers rely on for speed judgment degrade non-linearly with luminance. The disciplined alternative is bi-modal reference calibration: identify per-corner references that work in BOTH day and night contexts (large geometric features, kerb edges, pit-wall geometry, distinct apex curbs) rather than relying on day-only references (paint markers, sponsor boards, shadow patterns) that fail at night. Calibration: 0.40 visibility-deficit threshold corresponds to roughly the cohort-typical 'real night' boundary (full dark, headlight-only) — below it the session is dusk/twilight where day reflexes mostly transfer; above it the night-specific adaptations dominate. The 0.015 pace-deficit threshold corresponds to the cohort-noise floor for night vs day pace; above it the structural visibility-adaptation gap dominates the lap-time deficit. Diagnostic priority: T160 fires alongside endurance / strategy rules in dusk-to-dawn race contexts (24h, 12h, 6h races) where the night phase is a major performance driver."
+
+prescription:
+  drill_template_id: "drill.night_driving_visual_protocol"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "lap_time_pct_above_day_baseline"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["bi-modal reference calibration transfers — the discipline of identifying day-and-night-visible references is the same skill on either platform. Sim drivers face title-dependent lighting fidelity (some titles model headlight beam falloff, kerb retroreflectivity, and ambient lighting accurately, others use a simplified darkness multiplier that hides night-specific perception challenges); the rule is most useful in titles with realistic night-lighting models. Real-car drivers face additional night-driving challenges absent in sims (pupil-adaptation lag from pit-lane / track-edge bright lighting, helmet visor tinting trade-offs, fatigue compounding in long-stint night phases) that compound the visibility issue; the visual-reference protocol applies but may need explicit fatigue-management and pupil-adaptation-pacing components on top."]

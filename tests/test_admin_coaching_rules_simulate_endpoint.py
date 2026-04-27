@@ -479,6 +479,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # bearing silencer.)
     "pressure_context_score": 0.10,
     "error_rate_pct_above_low_pressure_baseline": 0.05,
+    # T160 night-driving signals at day-session / on-pace values
+    # so `ad.night_driving.pace_drop` stays silent. (Both signals
+    # quiet — visibility deficit 0.05 is well below the >=0.40
+    # firing threshold; pace deficit 0.003 is well below the
+    # >=0.015 firing threshold; either alone is load-bearing
+    # silencer.)
+    "night_visibility_deficit_pct": 0.05,
+    "lap_time_pct_above_day_baseline": 0.003,
 }
 
 # A context where every braking rule should be silent — values
@@ -773,6 +781,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # independently.
     "pressure_context_score": 0.10,
     "error_rate_pct_above_low_pressure_baseline": 0.05,
+    # T160 night-driving signals at day-session / on-pace values
+    # so `ad.night_driving.pace_drop` stays silent. Same shape
+    # as firing fixture; both signals quiet independently.
+    "night_visibility_deficit_pct": 0.05,
+    "lap_time_pct_above_day_baseline": 0.003,
 }
 
 
