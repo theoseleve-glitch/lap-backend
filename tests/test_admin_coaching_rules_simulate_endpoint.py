@@ -174,6 +174,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     "pit_lap_delta_total": 0,
     "fuel_delta_liters": 0.0,
     "stint_duration_delta_laps": 0,
+    # T111 throttle-pickup signals at quiet values so
+    # `th.early_throttle.snap_oversteer` stays silent in this
+    # braking-focused fixture.
+    "throttle_pct_at_apex": 0.20,
+    "peak_rear_slip_angle_deg": 3.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -207,6 +212,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     "pit_lap_delta_total": 0,
     "fuel_delta_liters": 0.0,
     "stint_duration_delta_laps": 0,
+    # T111 throttle-pickup signals at quiet values so
+    # `th.early_throttle.snap_oversteer` stays silent.
+    "throttle_pct_at_apex": 0.20,
+    "peak_rear_slip_angle_deg": 3.0,
 }
 
 
