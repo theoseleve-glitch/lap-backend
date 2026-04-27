@@ -46,6 +46,7 @@ _BRAKE_DRIFT_RULE_ID = "co.braking_point_drift.over_run"
 _PASS_ABORT_RULE_ID = "rc.passing_attempts.abort_rate"
 _DEFENSIVE_LINE_RULE_ID = "rc.defensive_line.too_often"
 _BLUE_FLAG_RULE_ID = "rc.blue_flag_compliance.slow_lift"
+_RESTART_LAUNCH_RULE_ID = "rc.restart_acceleration.poor_launch"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -89,6 +90,12 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # Slow average response across multiple events = pattern.
     "blue_flag_event_count": 5,
     "blue_flag_avg_lift_response_seconds": 4.5,
+    # T138 — restart-launch signals. Acceleration quality on
+    # the first lap after a safety-car / yellow-flag restart.
+    # Deficit measured cumulatively across the first restart
+    # lap vs the driver's own clean-air pace.
+    "restart_event_count": 4,
+    "restart_first_lap_avg_speed_deficit_kmh": 6.5,
 }
 
 
@@ -677,4 +684,84 @@ def test_blue_flag_silent_when_response_is_prompt() -> None:
         f"{_BLUE_FLAG_RULE_ID} fired on prompt-yielding driver — "
         f"coached non-compliance to a courteous driver. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T138: rc.restart_acceleration.poor_launch -----------------
+
+
+def test_restart_launch_fires_on_combined_deficit_and_enough_restarts() -> None:
+    """Both signals firing: avg first-restart-lap speed deficit
+    6.5 km/h vs the driver's own clean-air pace (well above the
+    3.0 km/h firing threshold) AND 4 restarts in the session
+    (well past the 2-restart minimum sample size). Pin: the
+    canonical "you can't get the car off the line cleanly after
+    a restart" pattern produces an insight — distinct from
+    pace deficit because clean-air pace is the reference, not
+    a cohort percentile."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "restart_event_count": 4,
+            "restart_first_lap_avg_speed_deficit_kmh": 6.5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _RESTART_LAUNCH_RULE_ID in fired_ids, (
+        f"expected {_RESTART_LAUNCH_RULE_ID} to fire on combined "
+        f"high-deficit + enough-restarts context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_restart_launch_silent_when_event_count_too_low() -> None:
+    """High deficit (6.5 km/h) but only 1 restart event in the
+    session. A single restart can be ruined by upstream chaos
+    (incident in front, getting blocked, surprise green) — one
+    sample is event-noise, not a coachable pattern. The rule
+    must NOT fire — sample size guard prevents diagnosing a
+    launch problem from a single flukey restart. Pin: the >=2
+    event minimum requires the pattern to show twice."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "restart_event_count": 1,
+            "restart_first_lap_avg_speed_deficit_kmh": 6.5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _RESTART_LAUNCH_RULE_ID not in fired_ids, (
+        f"{_RESTART_LAUNCH_RULE_ID} fired on 1-restart sample — "
+        f"coached launch quality from event-noise. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_restart_launch_silent_when_launch_is_clean() -> None:
+    """Plenty of restarts (4) but avg deficit only 1.0 km/h —
+    the driver matches their own clean-air pace within the
+    noise floor. The rule must NOT fire — coaching "your
+    launches are slow" to a driver hitting their own reference
+    pace is noise. Pin: the deficit guard prevents firing on
+    every driver who happens to see multiple restarts. The
+    rule targets the launch-quality failure mode specifically,
+    not restart frequency."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "restart_event_count": 4,
+            "restart_first_lap_avg_speed_deficit_kmh": 1.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _RESTART_LAUNCH_RULE_ID not in fired_ids, (
+        f"{_RESTART_LAUNCH_RULE_ID} fired on clean-launch driver — "
+        f"coached launch quality to a driver matching their own "
+        f"pace. Fired: {sorted(fired_ids)}"
     )

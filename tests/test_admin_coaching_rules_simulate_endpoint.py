@@ -317,6 +317,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # the >=3 sample-size guard.)
     "blue_flag_event_count": 5,
     "blue_flag_avg_lift_response_seconds": 1.0,
+    # T138 restart-launch signals at clean-launch values so
+    # `rc.restart_acceleration.poor_launch` stays silent. (Speed
+    # deficit 1.0 km/h is well below the >=3.0 km/h firing
+    # threshold and is the load-bearing silencer; restart count
+    # 4 satisfies the >=2 sample-size guard.)
+    "restart_event_count": 4,
+    "restart_first_lap_avg_speed_deficit_kmh": 1.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -485,6 +492,13 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # avg response (1.0s, well below the >=3.0s firing threshold).
     "blue_flag_event_count": 5,
     "blue_flag_avg_lift_response_seconds": 1.0,
+    # T138 restart-launch signals at clean-launch values so
+    # `rc.restart_acceleration.poor_launch` stays silent. Same
+    # shape as the firing fixture; load-bearing silencer is the
+    # speed deficit (1.0 km/h, well below the >=3.0 km/h
+    # firing threshold).
+    "restart_event_count": 4,
+    "restart_first_lap_avg_speed_deficit_kmh": 1.0,
 }
 
 
