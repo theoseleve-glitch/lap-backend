@@ -1,0 +1,37 @@
+id: "fm.fuel_saving.ineffective_pattern"
+version: 1
+category: strategy
+subcategory: fuel_saving
+difficulty: advanced
+
+detection:
+  signal: fuel_saved_per_second_lost_ratio
+  condition: "lift_and_coast_total_time_pct_per_lap >= 0.03 and fuel_saved_per_second_lost_ratio <= 0.50"
+  context:
+    must_have_channels: ["throttle", "fuel_level", "speed", "lap_position"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.50 = low, 0.30 = medium, 0.15 = high"
+
+explanation_template:
+  beginner: "You're spending {{lift_and_coast_total_time_pct_per_lap}} of your lap on lift-and-coast but only saving {{fuel_saved_per_second_lost_ratio}} units of fuel per second of lap time you give up. The lever is good — your zones aren't. Lifting before fast corners costs entry speed and exit drive (most of your time loss); lifting before slow-corner approaches with short braking and a flat next sector pays off. Pick three slow-corner approaches as your reference zones, drop the rest."
+  intermediate: "Sister-rule to T146 (`fm.lift_and_coast.too_rare`). T146: not using the lever. T147: using it in the wrong zones. Efficiency {{fuel_saved_per_second_lost_ratio}} below the 0.50 break-even means each second of lap time spent saves less than 0.5 units of fuel — net-negative. The zone-selection heuristic: prefer slow-corner approaches (high engine load, short braking, flat next sector) over fast-corner approaches (low marginal fuel saved, exit-drive penalty propagates). Three good zones beat seven mediocre ones."
+  advanced: "Lift-and-coast efficiency {{fuel_saved_per_second_lost_ratio}}, deployment {{lift_and_coast_total_time_pct_per_lap}}. The economic frame: lift-and-coast value = (fuel_saved * race_fuel_value) - (time_lost * race_position_value); below 0.50 efficiency the second term dominates. Zone scoring: rank candidate zones by (engine_load_during_lift * lift_duration) / (entry_speed_compromise * sectors_affected); deploy the top-3, retire the bottom-N. T147 is the third rule in the fuel-management diagnostic chain (T145 → T146 → T147): first detect the problem (T145), then identify the missing lever (T146), then refine the lever's deployment (T147). Each layer narrows the prescription."
+
+prescription:
+  drill_template_id: "drill.lift_and_coast_zone_pruning"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "fuel_saved_per_second_lost_ratio"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["zone-selection discipline transfers — picking the right corners to lift into is the same skill on either platform. Sim engine-load measurements may underrepresent real-car ERS / MGU-K interactions during lift, distorting the efficiency ratio in titles without ERS modeling. Real-car drivers face additional zone constraints around brake-temperature management (lifts in cold-brake zones can chill the discs and compromise the next braking event); the zone-selection heuristic remains valid but real-car coaches should explicitly call out brake-temp-sensitive zones."]

@@ -380,7 +380,15 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # 0.01 above, which short-circuits T146's >=0.05 guard);
     # this signal is included so a future change to the excess
     # value upstream doesn't surface T146 inappropriately.
+    # The 0.05 value also satisfies T147's >=0.03 lever-use
+    # guard, which is then short-circuited by T147's efficiency
+    # guard below.
     "lift_and_coast_total_time_pct_per_lap": 0.05,
+    # T147 fuel-saving efficiency signal at well-tuned value so
+    # `fm.fuel_saving.ineffective_pattern` stays silent. (Ratio
+    # 0.85 is well above the <=0.50 firing threshold and is the
+    # load-bearing silencer.)
+    "fuel_saved_per_second_lost_ratio": 0.85,
 }
 
 # A context where every braking rule should be silent — values
@@ -600,8 +608,15 @@ _QUIET_CONTEXT: dict[str, Any] = {
     "fuel_burn_excess_pct_above_target": 0.01,
     # T146 lift-and-coast signal at lever-deployed value so
     # `fm.lift_and_coast.too_rare` stays silent defensively.
-    # Same shape as firing fixture.
+    # Same shape as firing fixture; the 0.05 value also
+    # satisfies T147's lever-use guard, short-circuited by
+    # T147's efficiency guard below.
     "lift_and_coast_total_time_pct_per_lap": 0.05,
+    # T147 fuel-saving efficiency signal at well-tuned value so
+    # `fm.fuel_saving.ineffective_pattern` stays silent. Same
+    # shape as firing fixture; load-bearing silencer is the
+    # ratio (0.85, well above the <=0.50 firing threshold).
+    "fuel_saved_per_second_lost_ratio": 0.85,
 }
 
 

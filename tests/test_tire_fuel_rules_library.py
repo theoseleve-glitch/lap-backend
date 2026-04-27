@@ -48,6 +48,7 @@ _TIRE_DECAY_RULE_ID = "tm.stint_pace_decay.tire_degradation"
 _FLAT_SPOT_RULE_ID = "tm.lockup_pattern.flat_spot_risk"
 _FUEL_BURN_EXCESS_RULE_ID = "fm.fuel_burn_excess.vs_target"
 _LIFT_COAST_RULE_ID = "fm.lift_and_coast.too_rare"
+_INEFFECTIVE_SAVING_RULE_ID = "fm.fuel_saving.ineffective_pattern"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -94,6 +95,12 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # framing as T143/T074 and T144/T192 (specific-diagnosis
     # subset of a broader signal).
     "lift_and_coast_total_time_pct_per_lap": 0.005,
+    # T147 — sister to T146: driver IS using the lever but the
+    # zones are wrong (fast-corner lifts that compromise entry
+    # speed). Caller supplies fuel-saved-per-second-lost ratio;
+    # below 0.50 means the lap-time cost outweighs the fuel
+    # savings (driver should pick different zones).
+    "fuel_saved_per_second_lost_ratio": 0.30,
 }
 
 
@@ -636,4 +643,88 @@ def test_lift_coast_silent_when_lever_already_in_use() -> None:
         f"{_LIFT_COAST_RULE_ID} fired on driver already using "
         f"lift-and-coast — over-prescribed a lever the driver "
         f"is already deploying. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T147: fm.fuel_saving.ineffective_pattern ------------------
+
+
+def test_ineffective_saving_fires_on_combined_lever_use_and_low_efficiency() -> None:
+    """Both signals firing: driver IS using lift-and-coast (6%
+    of lap, well above the 0.03 firing threshold — distinguishes
+    from T146 which fires when driver isn't lifting) AND fuel-
+    saved-per-second-lost ratio 0.30 (well below the 0.50 firing
+    threshold — the zones are inefficient). Pin: the canonical
+    "you're trying but doing it wrong" pattern produces an
+    insight, distinct from T146 ("not trying at all") and T145
+    (broad over-burn diagnosis)."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lift_and_coast_total_time_pct_per_lap": 0.06,
+            "fuel_saved_per_second_lost_ratio": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _INEFFECTIVE_SAVING_RULE_ID in fired_ids, (
+        f"expected {_INEFFECTIVE_SAVING_RULE_ID} to fire on combined "
+        f"lever-use + low-efficiency context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_ineffective_saving_silent_when_driver_not_lifting() -> None:
+    """Low efficiency (0.30 ratio) but lift-and-coast usage
+    only 0.5% of lap (below the 0.03 firing threshold — driver
+    isn't really deploying the lever at all). T146's territory,
+    not T147's. The rule must NOT fire — coaching "your zones
+    are wrong" to a driver who isn't lifting would mis-prescribe;
+    they need to start lifting first (T146), THEN refine zone
+    selection. Pin: the lever-use guard enforces T147's "trying
+    but inefficient" framing, distinct from T146's "not trying"
+    framing."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lift_and_coast_total_time_pct_per_lap": 0.005,
+            "fuel_saved_per_second_lost_ratio": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _INEFFECTIVE_SAVING_RULE_ID not in fired_ids, (
+        f"{_INEFFECTIVE_SAVING_RULE_ID} fired on non-lifting "
+        f"driver — mis-prescribed zone refinement to a driver "
+        f"who hasn't deployed the lever yet. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_ineffective_saving_silent_when_efficiency_acceptable() -> None:
+    """Driver IS using lift-and-coast (6% of lap) but fuel-
+    saved-per-second-lost ratio is 0.80 — the zone selection is
+    paying off; each second lost yields 0.80 units of fuel
+    savings, well above the 0.50 break-even. The rule must NOT
+    fire — coaching "your zones are wrong" to a driver whose
+    zones are working would mis-prescribe and waste their
+    attention. Pin: the efficiency guard prevents firing on
+    every lift-and-coast user regardless of zone quality."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "lift_and_coast_total_time_pct_per_lap": 0.06,
+            "fuel_saved_per_second_lost_ratio": 0.80,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _INEFFECTIVE_SAVING_RULE_ID not in fired_ids, (
+        f"{_INEFFECTIVE_SAVING_RULE_ID} fired on efficient lift-"
+        f"and-coast driver — coached zone refinement to a driver "
+        f"whose zones are already paying off. "
+        f"Fired: {sorted(fired_ids)}"
     )
