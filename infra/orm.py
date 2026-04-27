@@ -1043,3 +1043,48 @@ class OrganizationMember(Base):
             name="uq_organization_members_org_id_user_id",
         ),
     )
+
+
+class OrganizationInvitation(Base):
+    """T164 — pending invitation issued by an org admin to bring
+    a new user (by email) into the org under a role.
+
+    `token` is opaque, ~256-bit secret (secrets.token_urlsafe(32))
+    used by T165's accept endpoint as the redemption credential.
+    UNIQUE on token to prevent collisions.
+
+    `expires_at` enforces 7-day TTL — invitations stale silently
+    rather than living forever. Implicit status:
+      - accepted_at IS NULL AND expires_at > now() → pending
+      - accepted_at IS NOT NULL                      → accepted
+      - accepted_at IS NULL AND expires_at <= now()  → expired
+
+    Cascade on org_id: deleting an org cleans up its outstanding
+    invitations along with members. No FK on email (the invitee
+    might not have a user row yet — they're invited BY email).
+    """
+
+    __tablename__ = "organization_invitations"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid6.uuid7
+    )
+    org_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    role: Mapped[str] = mapped_column(String(32))
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True)
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
