@@ -24,6 +24,7 @@ from coaching.library.rule_runner import (
     run_rules,
 )
 from coaching.library.rule_schema import Difficulty
+from infra.admin_audit import record_admin_action
 from infra.coaching_flag_aggregation import (
     compute_high_false_positive_rules,
     compute_per_rule_stats,
@@ -96,7 +97,6 @@ async def force_sync_billing_status(
         break
     if found_status:
         target.subscription_status = found_status
-        await db.commit()
         logger.info(
             "admin_billing_sync_applied",
             user_id=str(target.id),
@@ -107,6 +107,17 @@ async def force_sync_billing_status(
             "admin_billing_sync_no_subs",
             user_id=str(target.id),
         )
+    # T197 — audit row regardless of whether a sub was found:
+    # the admin still performed the sync action, and the audit
+    # answers "an admin attempted to reconcile this account".
+    await record_admin_action(
+        db,
+        admin_user_id=caller.id,
+        action="billing.sync",
+        target_id=target.id,
+        metadata={"new_status": found_status},
+    )
+    await db.commit()
     return {"subscription_status": target.subscription_status}
 
 
@@ -114,10 +125,13 @@ async def force_sync_billing_status(
 async def refund_charge(
     body: RefundRequest,
     caller: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, str | int]:
     """Issue a Stripe refund against a charge. Full refund by default;
     pass `amount` (smallest currency unit) for a partial. The
-    endpoint is a thin relay — no DB writes, no user resolution."""
+    endpoint is a thin relay against Stripe + an audit row in
+    admin_audit_log (T197) so the money-moving action is durably
+    attributable."""
     _require_admin(caller)
     kwargs: dict[str, Any] = {"charge": body.charge_id}
     if body.amount is not None:
@@ -134,6 +148,23 @@ async def refund_charge(
         amount=refund_amount,
         status=refund_status,
     )
+    # T197 — durable audit. target_id is None: charge ids are
+    # Stripe-side opaque strings, not UUIDs in our DB. The
+    # charge_id + refund_id live in metadata where regulators
+    # can cross-reference Stripe's ledger.
+    await record_admin_action(
+        db,
+        admin_user_id=caller.id,
+        action="billing.refund",
+        target_id=None,
+        metadata={
+            "charge_id": body.charge_id,
+            "refund_id": refund_id,
+            "amount": refund_amount,
+            "status": refund_status,
+        },
+    )
+    await db.commit()
     return {
         "refund_id": refund_id,
         "status": refund_status,

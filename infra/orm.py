@@ -1141,3 +1141,45 @@ class CoachSessionNote(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class AdminAuditLog(Base):
+    """T197 — append-only audit log of mutating admin actions.
+
+    Every state-changing admin endpoint writes one row here
+    after its work commits. Rows answer "who did what to whom,
+    when?" — the durable, queryable artifact regulators ask
+    for (structlog lines are ephemeral and not joinable).
+
+    `metadata_json` carries action-specific context — Stripe
+    refund_id + amount for billing.refund, the new status
+    string for billing.sync — pinned per-action so an auditor
+    can cross-reference external systems (Stripe ledger) to
+    our internal record.
+
+    No FK cascade on admin_user_id: if the admin user is later
+    deleted, the audit history must remain (can't undo what
+    has been recorded). The FK has no explicit ondelete so
+    the default NO ACTION blocks deletion if rows exist —
+    consistent with "audit is forever". The audit-vs-erasure
+    interaction with T195's user-delete is a future call.
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid6.uuid7
+    )
+    admin_user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    target_id: Mapped[UUID | None] = mapped_column(
+        Uuid, nullable=True, index=True
+    )
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
