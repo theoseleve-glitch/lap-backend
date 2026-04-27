@@ -45,6 +45,7 @@ _LIFT_RULE_ID = "th.throttle_lift.mid_corner"
 _STAIRCASE_RULE_ID = "th.staircase_pattern.uneven_modulation"
 _EARLY_FULL_RULE_ID = "th.early_full.before_apex"
 _UNDERUSE_RULE_ID = "th.full_throttle_underuse.straights"
+_LAP_VARIANCE_RULE_ID = "th.throttle_consistency.lap_variance"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -77,6 +78,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T118 — straight-line throttle utilization signals.
     "straight_full_throttle_time_pct": 0.70,
     "straight_length_m": 600,
+    # T119 — cross-lap throttle consistency signals.
+    "throttle_trace_lap_variance_index": 0.45,
+    "consecutive_clean_laps_compared": 5,
 }
 
 
@@ -716,4 +720,78 @@ def test_underuse_silent_when_throttle_pinned() -> None:
     assert _UNDERUSE_RULE_ID not in fired_ids, (
         f"{_UNDERUSE_RULE_ID} fired on pinned-throttle straight "
         f"— flagged a clean driver. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T119: th.throttle_consistency.lap_variance ----------------
+
+
+def test_lap_variance_fires_on_combined_high_variance_and_sample() -> None:
+    """Both signals firing: throttle-trace variance index 0.45
+    (above the 0.30 inconsistency floor) across 5 clean laps
+    (well above the 3-sample minimum needed to trust the claim).
+    Pin: the canonical "different throttle technique every lap"
+    pattern produces an insight rather than being missed because
+    individual laps look fine in isolation."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_trace_lap_variance_index": 0.45,
+            "consecutive_clean_laps_compared": 5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LAP_VARIANCE_RULE_ID in fired_ids, (
+        f"expected {_LAP_VARIANCE_RULE_ID} to fire on combined "
+        f"high-variance + sufficient-sample context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_lap_variance_silent_when_sample_too_small() -> None:
+    """High variance (0.45) but only 2 clean laps compared. The
+    rule must NOT fire — 2-lap comparison is statistical noise,
+    not a behavioral pattern. Coaching here would generate
+    confident-sounding insights from insufficient evidence. Pin:
+    the conjunction enforces a minimum sample-size before
+    making a consistency claim."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_trace_lap_variance_index": 0.45,
+            "consecutive_clean_laps_compared": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LAP_VARIANCE_RULE_ID not in fired_ids, (
+        f"{_LAP_VARIANCE_RULE_ID} fired on 2-lap-sample "
+        f"context — confident claim from insufficient evidence. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_lap_variance_silent_when_driver_is_consistent() -> None:
+    """5 clean laps compared with variance index 0.15 (well
+    below the 0.30 floor — driver IS consistent). The rule must
+    NOT fire — coaching consistency to a consistent driver is
+    noise. Pin: baseline no-fire to prove the rule isn't fires-
+    always once you have enough samples."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "throttle_trace_lap_variance_index": 0.15,
+            "consecutive_clean_laps_compared": 5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LAP_VARIANCE_RULE_ID not in fired_ids, (
+        f"{_LAP_VARIANCE_RULE_ID} fired on consistent-driver "
+        f"context — coached consistency to a consistent driver. "
+        f"Fired: {sorted(fired_ids)}"
     )

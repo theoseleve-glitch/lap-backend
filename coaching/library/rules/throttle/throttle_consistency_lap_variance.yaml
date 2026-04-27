@@ -1,0 +1,37 @@
+id: "th.throttle_consistency.lap_variance"
+version: 1
+category: technique
+subcategory: throttle_consistency
+difficulty: beginner
+
+detection:
+  signal: throttle_trace_lap_variance_index
+  condition: "throttle_trace_lap_variance_index >= 0.30 and consecutive_clean_laps_compared >= 3"
+  context:
+    must_have_channels: ["throttle"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.30 = low, 0.45 = medium, 0.60 = high"
+
+explanation_template:
+  beginner: "Across {{consecutive_clean_laps_compared}} clean laps your throttle traces varied a lot (variance index {{throttle_trace_lap_variance_index}}). You're using different technique each lap — fast laps come from doing the same thing repeatably, not from finding a new line every lap. Pick a reference lap and copy yourself."
+  intermediate: "Throttle technique drift across {{consecutive_clean_laps_compared}} clean laps — variance index {{throttle_trace_lap_variance_index}}. High variance hides which technique is actually fastest; lock in a reference and minimize departure from it before chasing further gains."
+  advanced: "Cross-lap throttle variance {{throttle_trace_lap_variance_index}} over {{consecutive_clean_laps_compared}} clean laps. Above 0.30 the noise floor masks technique-vs-technique deltas; consistency drills (target ≤0.20) recover signal. Until variance is in band, single-corner coaching deltas are unreliable."
+
+prescription:
+  drill_template_id: "drill.lap_repeatability_anchor"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "throttle_trace_lap_variance_index"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["consistency drills transfer well — repeatability is platform-agnostic. The variance threshold may need to relax slightly for real cars where weather/grip drift adds external variance the rule cannot distinguish from technique variance."]

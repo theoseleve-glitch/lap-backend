@@ -208,6 +208,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # so `th.full_throttle_underuse.straights` stays silent.
     "straight_full_throttle_time_pct": 0.95,
     "straight_length_m": 400,
+    # T119 cross-lap throttle consistency at consistent-driver
+    # values so `th.throttle_consistency.lap_variance` stays
+    # silent.
+    "throttle_trace_lap_variance_index": 0.15,
+    "consecutive_clean_laps_compared": 5,
 }
 
 # A context where every braking rule should be silent — values
@@ -274,6 +279,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # so `th.full_throttle_underuse.straights` stays silent.
     "straight_full_throttle_time_pct": 0.95,
     "straight_length_m": 400,
+    # T119 cross-lap throttle consistency at consistent-driver
+    # values so `th.throttle_consistency.lap_variance` stays
+    # silent.
+    "throttle_trace_lap_variance_index": 0.15,
+    "consecutive_clean_laps_compared": 5,
 }
 
 
