@@ -15,6 +15,7 @@ from app.routers import benchmark as benchmark_router
 from app.routers import billing as billing_router
 from app.routers import bridge as bridge_router
 from app.routers import catalog as catalog_router
+from app.routers import coach as coach_router
 from app.routers import coaching as coaching_router
 from app.routers import compare_cases as compare_cases_router
 from app.routers import devices as devices_router
@@ -98,6 +99,7 @@ app.include_router(billing_router.router)
 app.include_router(bridge_router.router)
 app.include_router(bridge_router.driver_router)
 app.include_router(catalog_router.router)
+app.include_router(coach_router.router)
 app.include_router(coaching_router.router)
 app.include_router(compare_cases_router.router)
 app.include_router(devices_router.router)
