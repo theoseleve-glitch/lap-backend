@@ -448,6 +448,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # load-bearing silencer.)
     "traffic_proximity_pct_lap": 0.05,
     "defensive_lap_time_cost_seconds": 0.10,
+    # T156 new-track signals at known-track / on-pace values so
+    # `ad.new_track.learning_rate_slow` stays silent. (Both
+    # signals quiet — prior-session count 8 is well above the
+    # <=1 firing threshold; learning-rate deficit 0.05 is well
+    # below the >=0.30 firing threshold; either alone is
+    # load-bearing silencer.)
+    "prior_session_count_at_track": 8,
+    "lap_time_improvement_per_lap_pct_below_cohort": 0.05,
 }
 
 # A context where every braking rule should be silent — values
@@ -720,6 +728,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # independently.
     "traffic_proximity_pct_lap": 0.05,
     "defensive_lap_time_cost_seconds": 0.10,
+    # T156 new-track signals at known-track / on-pace values so
+    # `ad.new_track.learning_rate_slow` stays silent. Same shape
+    # as firing fixture; both signals quiet independently.
+    "prior_session_count_at_track": 8,
+    "lap_time_improvement_per_lap_pct_below_cohort": 0.05,
 }
 
 

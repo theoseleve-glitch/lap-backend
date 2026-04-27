@@ -1,0 +1,37 @@
+id: "ad.new_track.learning_rate_slow"
+version: 1
+category: strategy
+subcategory: track_learning
+difficulty: beginner
+
+detection:
+  signal: lap_time_improvement_per_lap_pct_below_cohort
+  condition: "prior_session_count_at_track <= 1 and lap_time_improvement_per_lap_pct_below_cohort >= 0.30"
+  context:
+    must_have_channels: ["lap_time", "session_id", "track_id", "lap_number"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.30 = low, 0.50 = medium, 0.70 = high"
+
+explanation_template:
+  beginner: "This is a new track for you ({{prior_session_count_at_track}} prior session) and your per-lap improvement is running {{lap_time_improvement_per_lap_pct_below_cohort}} below cohort norm — peers learn this layout faster. The default approach (drive lots of laps and let pace come) is the slow path. The fast path is structured exploration: pick one corner per session to deeply learn (brake markers, apex reference, exit kerb), commit to those references for 5+ laps, then move to the next corner. By the end of session 2 you've nailed 6-8 corners deliberately rather than approximated all 16 vaguely. Speed at a new track comes from references, not laps."
+  intermediate: "Prior sessions {{prior_session_count_at_track}}, learning-rate deficit {{lap_time_improvement_per_lap_pct_below_cohort}} vs cohort. The learning-curve shape: fast learners converge ~80% of baseline pace within 1 session and the remaining ~20% across the next 3-5; slow learners spread the same convergence over 5+ sessions because they re-explore the same uncertainty each session instead of locking in references. Drill: explicit per-session learning targets (1-2 corners per session for deep reference-locking), with post-session sector-time review to confirm the learning landed (the 'I learned T3 today' assertion is verifiable by sector-3 time vs prior sessions, not by feel). Distinct from generic skill-plateau rules by attributing specifically to track-learning method, not skill ceiling."
+  advanced: "Sessions {{prior_session_count_at_track}}, deficit {{lap_time_improvement_per_lap_pct_below_cohort}}. Cognitive frame: new-track learning is a search-vs-exploit problem. Fast learners commit early to specific references (search budget allocated to corner-by-corner exploration in early laps, exploit budget allocated to driving those references the rest of the session). Slow learners spread search budget thin across all corners and never commit, producing approximate references everywhere and excellent references nowhere. The disciplined alternative is pre-session corner-priority budgeting: identify the 2-3 highest-lap-time-leverage corners (typically slow corners with long throttle exits), commit search budget to those first, and accept temporarily-suboptimal references at lower-priority corners until the high-priority ones are locked. Calibration: 0.30 deficit-vs-cohort threshold corresponds to roughly one extra session of convergence delay; 0.50 corresponds to roughly 2x convergence time. Below 0.30 the learning is on-pace within cohort variance; above 0.50 the structural learning-method gap dominates the lap-time deficit."
+
+prescription:
+  drill_template_id: "drill.systematic_track_learning_protocol"
+  expected_gain_kmh: "2-5"
+  success_condition:
+    metric: "lap_time_improvement_per_lap_pct_below_cohort"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["systematic-learning discipline transfers — the corner-priority-budgeting protocol is the same skill on either platform. Sim drivers benefit from instant per-corner replay and unlimited practice laps that compress the learning loop, so cohort norms are typically faster (lower per-session lap counts to convergence). Real-car drivers face limited track time and tire-wear constraints that increase the cost of unfocused exploration, making the structured-learning protocol even more leverage-heavy. The cohort-norm comparison adjusts for the platform — the 0.30 deficit threshold is computed against same-platform cohort baselines, not cross-platform."]

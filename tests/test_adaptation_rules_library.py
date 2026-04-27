@@ -49,6 +49,7 @@ _SETUP_REGRESSION_RULE_ID = "ad.setup_change.regression"
 _WET_LINE_RULE_ID = "ad.weather_transition.wet_line_wrong"
 _RAIN_ONSET_RULE_ID = "ad.rain_start.tire_commitment_late"
 _TRAFFIC_DEFENSE_RULE_ID = "ad.traffic_loss.defensive_excess"
+_NEW_TRACK_RULE_ID = "ad.new_track.learning_rate_slow"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -110,6 +111,17 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # general defensive-line-frequency pattern.
     "traffic_proximity_pct_lap": 0.45,
     "defensive_lap_time_cost_seconds": 0.55,
+    # T156 — new-track slow learning. Caller supplies the count
+    # of prior sessions at this track (<=1 means genuinely new
+    # to the driver, not a re-visit) and the driver's per-lap
+    # improvement rate as a pct deficit below cohort norm
+    # (>=0.30 means 30% below cohort improvement-per-lap; 0.50
+    # means half cohort speed). Distinct from generic
+    # consistency / pace rules by attributing the deficit
+    # specifically to track-learning rate (vs setup, fitness,
+    # or skill plateau).
+    "prior_session_count_at_track": 0,
+    "lap_time_improvement_per_lap_pct_below_cohort": 0.50,
 }
 
 
@@ -591,4 +603,90 @@ def test_traffic_defense_silent_when_defensive_cost_well_calibrated() -> None:
         f"{_TRAFFIC_DEFENSE_RULE_ID} fired on well-calibrated "
         f"defender — coached defensive-cost reduction to a driver "
         f"already calibrated. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T156: ad.new_track.learning_rate_slow ---------------------
+
+
+def test_new_track_fires_on_combined_new_track_and_slow_learning() -> None:
+    """Both signals firing: 0 prior sessions at this track (well
+    below the <=1 firing threshold — genuinely new track for
+    this driver) AND per-lap improvement rate 50% below cohort
+    norm (well above the 0.30 firing threshold — slow learning
+    curve). Pin: the canonical "you're at a new track and not
+    converging on baseline pace as fast as cohort peers" pattern
+    produces an insight, distinct from generic consistency /
+    pace rules by attributing the deficit specifically to
+    track-learning rate."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "prior_session_count_at_track": 0,
+            "lap_time_improvement_per_lap_pct_below_cohort": 0.50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _NEW_TRACK_RULE_ID in fired_ids, (
+        f"expected {_NEW_TRACK_RULE_ID} to fire on combined "
+        f"new-track + slow-learning context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_new_track_silent_when_track_is_known() -> None:
+    """Slow per-lap improvement (50% below cohort) but driver
+    has 8 prior sessions at this track — they know the layout,
+    so any improvement-rate deficit is attributable to skill
+    plateau, setup, fitness, or other factors, not track
+    learning. The rule must NOT fire — coaching "systematic
+    track learning" to a driver who already knows the track
+    would mis-attribute the cause and waste their attention.
+    Pin: the new-track guard separates track-learning failures
+    from generic plateau / pace issues (covered by other
+    rules)."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "prior_session_count_at_track": 8,
+            "lap_time_improvement_per_lap_pct_below_cohort": 0.50,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _NEW_TRACK_RULE_ID not in fired_ids, (
+        f"{_NEW_TRACK_RULE_ID} fired on known-track context — "
+        f"mis-attributed plateau / pace issue to track learning. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_new_track_silent_when_learning_rate_matches_cohort() -> None:
+    """Genuinely new track (0 prior sessions) but per-lap
+    improvement rate is on cohort norm (deficit only 0.05, well
+    below the 0.30 firing threshold) — driver is converging on
+    baseline at typical cohort speed. The rule must NOT fire —
+    coaching "learn the track faster" to a driver already
+    learning at cohort pace would over-state the issue. Pin: the
+    learning-rate guard prevents firing on every new-track
+    session regardless of convergence rate. The rule targets
+    the slow-learning failure mode specifically, not new-track
+    sessions in isolation."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "prior_session_count_at_track": 0,
+            "lap_time_improvement_per_lap_pct_below_cohort": 0.05,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _NEW_TRACK_RULE_ID not in fired_ids, (
+        f"{_NEW_TRACK_RULE_ID} fired on cohort-paced learner — "
+        f"coached track-learning to a driver already learning at "
+        f"cohort speed. Fired: {sorted(fired_ids)}"
     )
