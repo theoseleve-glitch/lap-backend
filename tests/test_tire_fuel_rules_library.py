@@ -47,6 +47,7 @@ _WEAR_IMBALANCE_RULE_ID = "tm.tire_wear.unbalanced_front_rear"
 _TIRE_DECAY_RULE_ID = "tm.stint_pace_decay.tire_degradation"
 _FLAT_SPOT_RULE_ID = "tm.lockup_pattern.flat_spot_risk"
 _FUEL_BURN_EXCESS_RULE_ID = "fm.fuel_burn_excess.vs_target"
+_LIFT_COAST_RULE_ID = "fm.lift_and_coast.too_rare"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -86,6 +87,13 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # division in the condition compiler).
     "fuel_burn_excess_pct_above_target": 0.08,
     "clean_lap_count_in_session": 8,
+    # T146 — diagnostic pair to T145. REUSES T145's
+    # `fuel_burn_excess_pct_above_target` and adds a lift-and-
+    # coast usage signal. Fires when excess exists AND driver
+    # isn't using the cheapest fuel-saving lever. Same priority
+    # framing as T143/T074 and T144/T192 (specific-diagnosis
+    # subset of a broader signal).
+    "lift_and_coast_total_time_pct_per_lap": 0.005,
 }
 
 
@@ -543,4 +551,89 @@ def test_fuel_burn_silent_when_burn_on_target() -> None:
         f"{_FUEL_BURN_EXCESS_RULE_ID} fired on on-target driver — "
         f"coached fuel-saving to a driver already matching the "
         f"strategist's target. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T146: fm.lift_and_coast.too_rare --------------------------
+
+
+def test_lift_coast_fires_on_combined_excess_and_no_lift() -> None:
+    """Both signals firing: fuel-burn 8% above target (T145
+    territory — the cheapest fuel-saving lever should be
+    deployed) AND lift-and-coast occupies only 0.5% of lap time
+    (well below the 0.02 firing threshold — driver isn't using
+    the cheapest lever). Pin: the canonical "you're over-burning
+    AND you're not lifting-and-coasting" pattern produces an
+    actionable lever-pick insight, distinct from T145's broader
+    diagnosis."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "fuel_burn_excess_pct_above_target": 0.08,
+            "lift_and_coast_total_time_pct_per_lap": 0.005,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LIFT_COAST_RULE_ID in fired_ids, (
+        f"expected {_LIFT_COAST_RULE_ID} to fire on combined "
+        f"high-excess + no-lift context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_lift_coast_silent_when_burn_on_target() -> None:
+    """Driver isn't using lift-and-coast (0.5% of lap) but fuel
+    burn is on target (1% excess). The driver is already saving
+    fuel via other levers (short-shifting, throttle-saturation
+    reduction, engine map). The rule must NOT fire — coaching
+    "use lift-and-coast" to a driver already on-target via a
+    different lever is wrong; the lever choice is theirs to
+    make based on tire-vs-fuel tradeoffs. Pin: the excess guard
+    enforces T146's diagnostic-pair framing — fires only when
+    T145 has reason to fire."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "fuel_burn_excess_pct_above_target": 0.01,
+            "lift_and_coast_total_time_pct_per_lap": 0.005,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LIFT_COAST_RULE_ID not in fired_ids, (
+        f"{_LIFT_COAST_RULE_ID} fired on on-target driver who "
+        f"isn't using lift-and-coast — over-prescribed a fuel-"
+        f"saving lever the driver doesn't need. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_lift_coast_silent_when_lever_already_in_use() -> None:
+    """Fuel-burn excess present (8% above target — T145 fires)
+    but lift-and-coast already occupies 6% of lap time (above
+    the 0.02 firing threshold — driver IS using the lever).
+    The over-burn comes from elsewhere (driving style, engine
+    map, traffic), not from missing this lever. The rule must
+    NOT fire — coaching "use lift-and-coast" to a driver already
+    using it would mis-prescribe and waste their attention. Pin:
+    the lift-rarity guard prevents firing when the lever is
+    already deployed; the over-burn diagnosis falls back to
+    T145's broader prescription."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "fuel_burn_excess_pct_above_target": 0.08,
+            "lift_and_coast_total_time_pct_per_lap": 0.06,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LIFT_COAST_RULE_ID not in fired_ids, (
+        f"{_LIFT_COAST_RULE_ID} fired on driver already using "
+        f"lift-and-coast — over-prescribed a lever the driver "
+        f"is already deploying. Fired: {sorted(fired_ids)}"
     )

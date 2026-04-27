@@ -1,0 +1,37 @@
+id: "fm.lift_and_coast.too_rare"
+version: 1
+category: strategy
+subcategory: lift_and_coast
+difficulty: intermediate
+
+detection:
+  signal: lift_and_coast_total_time_pct_per_lap
+  condition: "fuel_burn_excess_pct_above_target >= 0.05 and lift_and_coast_total_time_pct_per_lap <= 0.02"
+  context:
+    must_have_channels: ["throttle", "fuel_level", "lap_time"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.02 = low, 0.01 = medium, 0.005 = high"
+
+explanation_template:
+  beginner: "You're burning {{fuel_burn_excess_pct_above_target}} more fuel than target, and lift-and-coast occupies just {{lift_and_coast_total_time_pct_per_lap}} of your lap. That's the cheapest fuel-saving lever you have — pick three approach zones (the slowest braking points work best) and lift 20-30m before your usual lift point. You'll save 1-2% fuel per occurrence at less than 0.05s lap-time cost; an easy way to claw back the strategy gap without changing line."
+  intermediate: "Diagnostic-pair with T145 (`fm.fuel_burn_excess.vs_target`): excess present, lift-and-coast under-deployed. Lift-and-coast is the highest-fuel-saved-per-second-lost lever in the fuel toolkit (~1-2% per zone for ~0.05s/zone), but only when applied to slow-corner approaches where the missing engine load doesn't propagate into the next sector. Bad zones: fast corners where the lift compromises entry speed. Good zones: slow-corner approaches with short braking and a flat next sector. Choose 3 reference zones per circuit and rehearse them."
+  advanced: "Lift-and-coast usage {{lift_and_coast_total_time_pct_per_lap}} alongside fuel excess {{fuel_burn_excess_pct_above_target}}. Specific-diagnosis subset of T145 — when both fire, T146 is the actionable lever-pick (cheapest first); when only T145 fires, the driver is already lifting-and-coasting and the over-burn comes from elsewhere (driving style, engine map, traffic). Cumulative-leakage cost: each ~1% fuel saved by lift-and-coast costs ≈ 0.05s/lap; matched against the per-stint fuel deficit, the strategy gain typically outweighs the lap-time cost across a full race window. Coach lever choice, not fuel discipline in isolation."
+
+prescription:
+  drill_template_id: "drill.lift_and_coast_zone_selection"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "lift_and_coast_total_time_pct_per_lap"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["lift-and-coast lever transfers — zone selection and discipline are the same skill on either platform. Sim engine-braking models vary in how strongly the engine drag decelerates the car during lift, which affects the real-world translation of the technique; threshold may need adjustment for sim titles with weaker engine-braking simulation. Real-car drivers also have ERS/MGU-K harvesting interactions during lift that can complicate the fuel-saved-per-second-lost ratio; the lever ranking holds but the absolute numbers shift."]

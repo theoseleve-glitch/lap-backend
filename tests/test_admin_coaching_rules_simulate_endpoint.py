@@ -374,6 +374,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # `clean_lap_count_in_session: 5` from T131 above already
     # satisfies T145's >=5 sample-size guard.)
     "fuel_burn_excess_pct_above_target": 0.01,
+    # T146 lift-and-coast signal at lever-deployed value so
+    # `fm.lift_and_coast.too_rare` stays silent defensively.
+    # T146 reuses `fuel_burn_excess_pct_above_target` (already
+    # 0.01 above, which short-circuits T146's >=0.05 guard);
+    # this signal is included so a future change to the excess
+    # value upstream doesn't surface T146 inappropriately.
+    "lift_and_coast_total_time_pct_per_lap": 0.05,
 }
 
 # A context where every braking rule should be silent — values
@@ -591,6 +598,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # as firing fixture; load-bearing silencer is the excess
     # (0.01, well below the >=0.05 firing threshold).
     "fuel_burn_excess_pct_above_target": 0.01,
+    # T146 lift-and-coast signal at lever-deployed value so
+    # `fm.lift_and_coast.too_rare` stays silent defensively.
+    # Same shape as firing fixture.
+    "lift_and_coast_total_time_pct_per_lap": 0.05,
 }
 
 
