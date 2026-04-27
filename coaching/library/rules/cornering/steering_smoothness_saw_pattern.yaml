@@ -1,0 +1,37 @@
+id: "cs.steering_smoothness.saw_pattern"
+version: 1
+category: technique
+subcategory: steering_smoothness
+difficulty: beginner
+
+detection:
+  signal: steering_correction_event_count_in_corner
+  condition: "steering_correction_event_count_in_corner >= 3 and steering_smoothness_index <= 0.50"
+  context:
+    must_have_channels: ["steering"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, smoothness 0.50 = low, 0.35 = medium, 0.20 = high"
+
+explanation_template:
+  beginner: "On {{corner}} you sawed at the wheel — {{steering_correction_event_count_in_corner}} corrections inside the arc, smoothness {{steering_smoothness_index}}. Each correction scrubs front grip and slows the car. Pick one apex, set the steering input early, and trust it. Fewer inputs = more grip."
+  intermediate: "Sawing-steering pattern on {{corner}} — {{steering_correction_event_count_in_corner}} corrections, smoothness index {{steering_smoothness_index}}. Mid-arc steering corrections cost peak lateral grip; the cause is typically eyes-on-the-curb (chasing instantaneous position) instead of eyes-up (seeing the apex from entry). Look further ahead, set the wheel once."
+  advanced: "Steering-input saw pattern on {{corner}}: corrections={{steering_correction_event_count_in_corner}}, smoothness={{steering_smoothness_index}}. Each direction reversal costs ~3-5% peak lateral mu and scrubs ~0.02-0.05s; target ≤2 corrections and smoothness ≥0.70. Same diagnostic shape as T116 (throttle staircase) but on the steering channel."
+
+prescription:
+  drill_template_id: "drill.set_steer_once_eyes_up"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "steering_smoothness_index"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim drivers tend to saw more (no peripheral vision feedback for line proximity); real drivers tend to saw less but the underlying cause (eyes too low) is the same. The technique correction transfers directly."]

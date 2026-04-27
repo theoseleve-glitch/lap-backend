@@ -259,6 +259,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # is also a load-bearing silencer here — either guard alone
     # blocks the rule.)
     "trail_brake_release_distance_m_before_apex": 2.0,
+    # T129 saw-pattern signals at smooth-arc values so
+    # `cs.steering_smoothness.saw_pattern` stays silent.
+    "steering_correction_event_count_in_corner": 1,
+    "steering_smoothness_index": 0.85,
 }
 
 # A context where every braking rule should be silent — values
@@ -376,6 +380,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # is also a load-bearing silencer here — either guard alone
     # blocks the rule.)
     "trail_brake_release_distance_m_before_apex": 2.0,
+    # T129 saw-pattern signals at smooth-arc values so
+    # `cs.steering_smoothness.saw_pattern` stays silent.
+    "steering_correction_event_count_in_corner": 1,
+    "steering_smoothness_index": 0.85,
 }
 
 

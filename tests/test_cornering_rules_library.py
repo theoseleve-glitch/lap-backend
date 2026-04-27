@@ -46,6 +46,7 @@ _LINE_VARIANCE_RULE_ID = "cs.line_variance.inconsistent_apex"
 _UNDERSTEER_RULE_ID = "cs.rotation_lack.understeer_mid"
 _OVERSTEER_RULE_ID = "cs.rotation_excess.overrotation_exit"
 _TRAIL_BRAKE_RULE_ID = "cs.trail_brake_insufficient.rotation_missing"
+_SAW_PATTERN_RULE_ID = "cs.steering_smoothness.saw_pattern"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -77,6 +78,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # already declared above for T126; T128 fires at a lower threshold,
     # see condition).
     "trail_brake_release_distance_m_before_apex": 15.0,
+    # T129 — sawing-steering pattern signals.
+    "steering_correction_event_count_in_corner": 5,
+    "steering_smoothness_index": 0.30,
 }
 
 
@@ -728,4 +732,80 @@ def test_trail_brake_silent_when_no_understeer() -> None:
         f"{_TRAIL_BRAKE_RULE_ID} fired on early-release / no-"
         f"understeer context — flagged a deliberate short-trail "
         f"technique. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T129: cs.steering_smoothness.saw_pattern ------------------
+
+
+def test_saw_pattern_fires_on_combined_corrections_and_choppy() -> None:
+    """Both signals firing: 5 distinct steering corrections in
+    one corner AND smoothness index 0.30 (well below the 0.50
+    ceiling for "smooth"). Pin: the canonical "sawing the wheel
+    chasing the line" pattern produces an insight; each
+    correction scrubs front grip and costs cornering speed."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "steering_correction_event_count_in_corner": 5,
+            "steering_smoothness_index": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _SAW_PATTERN_RULE_ID in fired_ids, (
+        f"expected {_SAW_PATTERN_RULE_ID} to fire on combined "
+        f"corrections + low-smoothness context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_saw_pattern_silent_when_correction_count_low() -> None:
+    """Only 2 steering corrections in the corner (a deliberate
+    two-stage steering input — e.g. an Esses link or a double
+    apex) but smoothness reads 0.30 (low, possibly from sensor
+    jitter). The rule must NOT fire — two stages can be
+    intentional on complex-geometry corners. Pin: the conjunction
+    prevents flagging deliberate multi-stage steering on
+    complex corners."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "steering_correction_event_count_in_corner": 2,
+            "steering_smoothness_index": 0.30,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _SAW_PATTERN_RULE_ID not in fired_ids, (
+        f"{_SAW_PATTERN_RULE_ID} fired on low-correction / low-"
+        f"smoothness context — flagged a deliberate two-stage "
+        f"input. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_saw_pattern_silent_when_smoothness_high() -> None:
+    """5 detected steering corrections but smoothness index
+    reads 0.85 (the trace is smooth — the "corrections" are
+    inflection points on a curve detected by an over-eager
+    detector). The rule must NOT fire — smoothness is the
+    ground truth; correction count is a heuristic that needs
+    corroboration. Pin: the conjunction protects against
+    false-positive correction detections on smooth arcs."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "steering_correction_event_count_in_corner": 5,
+            "steering_smoothness_index": 0.85,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _SAW_PATTERN_RULE_ID not in fired_ids, (
+        f"{_SAW_PATTERN_RULE_ID} fired on high-correction / "
+        f"smooth context — flagged a smooth arc as sawing. "
+        f"Fired: {sorted(fired_ids)}"
     )
