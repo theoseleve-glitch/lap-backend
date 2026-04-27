@@ -21,6 +21,8 @@ from lap_schemas.v1 import (
     SessionDetail,
     SessionIngestAccepted,
     SessionManifest,
+    StrategyEvent,
+    StrategyEventCreate,
     StrategyPlan,
     StrategyPlanCreate,
 )
@@ -50,6 +52,7 @@ from infra.orm import ActionPrescription as ActionPrescriptionRow
 from infra.orm import CoachingInsight as CoachingInsightRow
 from infra.orm import DriverProfile as DriverProfileRow
 from infra.orm import Session as SessionRow
+from infra.orm import StrategyEvent as StrategyEventRow
 from infra.orm import StrategyPlan as StrategyPlanRow
 from infra.orm import TelemetryArtifact
 from infra.orm import User as UserRow
@@ -558,4 +561,69 @@ async def create_strategy_plan(
         planned_stints=row.planned_stints,
         planned_fuel_liters=row.planned_fuel_liters,
         planned_pit_laps=tuple(row.planned_pit_laps),
+    )
+
+
+@router.post(
+    "/{session_id}/strategy/events",
+    response_model=StrategyEvent,
+    status_code=status.HTTP_201_CREATED,
+    responses={404: {"description": "session_not_found (or not owned)"}},
+)
+async def create_strategy_event(
+    session_id: UUID,
+    payload: StrategyEventCreate,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StrategyEvent:
+    """T099 — append a runtime strategy event to a session's
+    timeline (T097 ORM).
+
+    Authz: same pattern as the plan endpoint — only the owning
+    driver can write; same 404 for "session doesn't exist" vs
+    "exists but not yours" so the UUID space isn't an
+    enumeration oracle.
+
+    Append-only: no uniqueness check; two same-kind events on
+    the same lap are valid (chaotic-race scenarios per T097
+    design — formation restarts, double FCYs).
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    session_row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if (
+        session_row is None
+        or profile is None
+        or session_row.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+    row = StrategyEventRow(
+        id=uuid6.uuid7(),
+        session_id=session_id,
+        kind=payload.kind,
+        at_lap=payload.at_lap,
+        details=dict(payload.details),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return StrategyEvent(
+        id=row.id,
+        session_id=row.session_id,
+        kind=row.kind,  # type: ignore[arg-type]
+        at_lap=row.at_lap,
+        details=row.details,
+        created_at=row.created_at,
     )
