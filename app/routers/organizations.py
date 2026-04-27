@@ -1,4 +1,4 @@
-"""T163-T175 (sprint2-backend) — organizations endpoints.
+"""T163-T176 (sprint2-backend) — organizations endpoints.
 
 T163 — POST   /api/v1/orgs creates an Organization.
 T164 — POST   /api/v1/orgs/:id/invites creates an invitation row.
@@ -9,6 +9,7 @@ T169 — GET    /api/v1/orgs/:id/drivers/:uid/profile coach view.
 T171 — GET    /api/v1/orgs/:id/dashboard coach roster.
 T174 — GET    /api/v1/orgs/:id/metrics aggregate KPIs.
 T175 — PATCH  /api/v1/orgs/:id/branding admin updates branding.
+T176 — DELETE /api/v1/orgs/:id deletes org with cascade.
 
 T163 endpoint:
   - assigns admin_user_id to the calling user
@@ -117,7 +118,7 @@ from lap_schemas.v1 import (
     OrganizationMembership as OrgMembershipSchema,
 )
 from lap_schemas.v1.skill_drilldown import SkillDimensionName
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_current_user, get_db
@@ -885,3 +886,62 @@ def _compute_best_gain(
         return None, None
     best_dim = max(avg_per_dim, key=lambda d: avg_per_dim[d])
     return cast(SkillDimensionName, best_dim), avg_per_dim[best_dim]
+
+
+@router.delete(
+    "/{org_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"description": "not_org_admin"},
+    },
+)
+async def delete_organization(
+    org_id: UUID,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """T176 — admin permanently deletes the organization.
+
+    Cascade (deleted with the org):
+      - OrganizationMember rows for that org_id
+      - OrganizationInvitation rows for that org_id
+
+    Preserved (NOT org-owned):
+      - User rows, DriverProfile rows, Session rows,
+        CoachSessionNote rows — these are personal/session
+        data that survives org churn
+
+    Why explicit deletes (rather than relying on FK CASCADE)?
+    Portable across SQLite (which has FK enforcement off by
+    default) and Postgres. The schema-level CASCADE remains as
+    defense-in-depth in production.
+
+    Auth: admin only — coach / driver / outsider all 403,
+    status parity with unknown-org.
+    """
+    org = (
+        await db.execute(
+            select(OrganizationRow).where(
+                OrganizationRow.id == org_id
+            )
+        )
+    ).scalar_one_or_none()
+    if org is None or org.admin_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="not_org_admin",
+        )
+    # Tear down org-scoped rows explicitly so the deletion works
+    # under SQLite (no FK enforcement) and stays self-documenting.
+    await db.execute(
+        delete(OrgInvitationRow).where(
+            OrgInvitationRow.org_id == org_id
+        )
+    )
+    await db.execute(
+        delete(OrganizationMemberRow).where(
+            OrganizationMemberRow.org_id == org_id
+        )
+    )
+    await db.delete(org)
+    await db.commit()
