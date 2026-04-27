@@ -159,6 +159,11 @@ _FIRING_CONTEXT: dict[str, Any] = {
     "stint_closing_window_consistency_seconds": 0.0,
     "stint_fuel_used_per_lap_liters": 0.0,
     "stint_lap_count": 100,
+    # T091 target-preparation signal at sprint-only sentinel
+    # (999 = "no event pinned, far future"). Same reason as the
+    # endurance signals: any rule referencing this name will
+    # KeyError if the context omits it.
+    "sessions_until_target_event": 999,
 }
 
 # A context where every braking rule should be silent — values
@@ -184,6 +189,8 @@ _QUIET_CONTEXT: dict[str, Any] = {
     "stint_closing_window_consistency_seconds": 0.0,
     "stint_fuel_used_per_lap_liters": 0.0,
     "stint_lap_count": 100,
+    # T091 target-preparation signal at sprint-only sentinel.
+    "sessions_until_target_event": 999,
 }
 
 
