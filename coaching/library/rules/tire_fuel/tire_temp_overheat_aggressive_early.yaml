@@ -1,0 +1,37 @@
+id: "tm.tire_temp_overheat.aggressive_early"
+version: 1
+category: strategy
+subcategory: tire_temp_overheat
+difficulty: intermediate
+
+detection:
+  signal: tire_temp_avg_above_optimal_first_3_laps_celsius
+  condition: "tire_temp_avg_above_optimal_first_3_laps_celsius >= 8.0 and early_lap_throttle_application_pct_above_baseline >= 0.10"
+  context:
+    must_have_channels: ["tire_temp", "throttle", "lap_number", "stint_index"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 8.0 = low, 12.0 = medium, 18.0 = high"
+
+explanation_template:
+  beginner: "In the first 3 laps your tires were {{tire_temp_avg_above_optimal_first_3_laps_celsius}}°C above their optimal window, and your throttle inputs were {{early_lap_throttle_application_pct_above_baseline}} above your usual pace. You cooked them before they were ready. The first 2-3 laps are warm-up — let the tires reach temperature with progressive throttle, then push from lap 4. Pushing too early forfeits the rest of the stint."
+  intermediate: "Early-stint overheat: {{tire_temp_avg_above_optimal_first_3_laps_celsius}}°C above optimal in laps 1-3, throttle aggression {{early_lap_throttle_application_pct_above_baseline}} above your own clean-air baseline. The conjunction matters — overheat alone could be setup; aggression alone is fine if the tires absorb it. Both together = driver-attributable thermal damage. Stage the build: lap 1 = 80% commit to seat the tires, lap 2 = 90%, lap 3+ = full. Recover the early time later in the stint when the tires would otherwise be falling off."
+  advanced: "First-3-lap thermal overshoot {{tire_temp_avg_above_optimal_first_3_laps_celsius}}°C, throttle aggression {{early_lap_throttle_application_pct_above_baseline}} vs baseline. Distinct from T074 (`enduro.stint_management.pace_decay_excessive`): T074 fires from the slope across the stint (downstream symptom); T141 fires from the early-window thermal cause. When both fire together, T141 is the actionable diagnosis (fix the early-stint behavior; T074's slope improves automatically). When only T074 fires (early window was clean, decay is tire-life or pace pressure), the drill is different. Prioritize T141 in the prescription queue when both are present."
+
+prescription:
+  drill_template_id: "drill.staged_tire_warmup_commitment"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "tire_temp_avg_above_optimal_first_3_laps_celsius"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["staged warm-up transfers — the discipline is the same skill on either platform. Sim tire models vary in warm-up realism (some compounds reach optimal nearly instantly, masking the cost of early aggression); the rule is most useful in sim titles with realistic thermal models (iRacing, ACC, Le Mans Ultimate). Real-car drivers face additional out-lap constraints (brake-warming, fuel-temperature ramp) that can complicate the diagnosis; threshold may need a small relaxation (e.g., 10°C) for real-car cohorts."]

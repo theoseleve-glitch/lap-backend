@@ -339,6 +339,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # sample-size guard.)
     "inside_overtake_completion_count": 4,
     "inside_overtake_avg_exit_speed_deficit_kmh": 1.0,
+    # T141 tire-overheat signals at in-window values so
+    # `tm.tire_temp_overheat.aggressive_early` stays silent. (Both
+    # signals quiet — overshoot 3°C is well below the >=8°C
+    # firing threshold; aggression 0.02 is well below the >=0.10
+    # firing threshold; either alone is load-bearing silencer.)
+    "tire_temp_avg_above_optimal_first_3_laps_celsius": 3.0,
+    "early_lap_throttle_application_pct_above_baseline": 0.02,
 }
 
 # A context where every braking rule should be silent — values
@@ -528,6 +535,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # the >=4.0 km/h firing threshold).
     "inside_overtake_completion_count": 4,
     "inside_overtake_avg_exit_speed_deficit_kmh": 1.0,
+    # T141 tire-overheat signals at in-window values so
+    # `tm.tire_temp_overheat.aggressive_early` stays silent. Same
+    # shape as the firing fixture; both signals are quiet
+    # independently.
+    "tire_temp_avg_above_optimal_first_3_laps_celsius": 3.0,
+    "early_lap_throttle_application_pct_above_baseline": 0.02,
 }
 
 
