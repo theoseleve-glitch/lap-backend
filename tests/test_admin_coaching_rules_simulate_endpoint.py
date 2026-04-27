@@ -253,6 +253,12 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # stays silent.
     "exit_oversteer_index": 0.10,
     "exit_throttle_correction_count": 0,
+    # T128 insufficient trail-brake signal at deep-trail value
+    # so `cs.trail_brake_insufficient.rotation_missing` stays
+    # silent. (mid_corner_understeer_index 0.10 from T126 above
+    # is also a load-bearing silencer here — either guard alone
+    # blocks the rule.)
+    "trail_brake_release_distance_m_before_apex": 2.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -364,6 +370,12 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # stays silent.
     "exit_oversteer_index": 0.10,
     "exit_throttle_correction_count": 0,
+    # T128 insufficient trail-brake signal at deep-trail value
+    # so `cs.trail_brake_insufficient.rotation_missing` stays
+    # silent. (mid_corner_understeer_index 0.10 from T126 above
+    # is also a load-bearing silencer here — either guard alone
+    # blocks the rule.)
+    "trail_brake_release_distance_m_before_apex": 2.0,
 }
 
 

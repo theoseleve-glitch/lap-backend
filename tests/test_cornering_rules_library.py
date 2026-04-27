@@ -45,6 +45,7 @@ _LATE_TURN_RULE_ID = "cs.apex_miss.late_turn"
 _LINE_VARIANCE_RULE_ID = "cs.line_variance.inconsistent_apex"
 _UNDERSTEER_RULE_ID = "cs.rotation_lack.understeer_mid"
 _OVERSTEER_RULE_ID = "cs.rotation_excess.overrotation_exit"
+_TRAIL_BRAKE_RULE_ID = "cs.trail_brake_insufficient.rotation_missing"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -72,6 +73,10 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T127 — exit overrotation / oversteer signals.
     "exit_oversteer_index": 0.55,
     "exit_throttle_correction_count": 2,
+    # T128 — insufficient trail-brake signal (mid_corner_understeer_index
+    # already declared above for T126; T128 fires at a lower threshold,
+    # see condition).
+    "trail_brake_release_distance_m_before_apex": 15.0,
 }
 
 
@@ -644,4 +649,83 @@ def test_oversteer_silent_when_chassis_neutral() -> None:
         f"{_OVERSTEER_RULE_ID} fired on neutral-chassis / "
         f"lift context — mis-attributed lift to oversteer. "
         f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T128: cs.trail_brake_insufficient.rotation_missing --------
+
+
+def test_trail_brake_fires_on_combined_short_release_and_understeer() -> None:
+    """Both signals firing: brake released 15m before apex
+    (driver let off the brake well before the rotation point)
+    AND mid-corner understeer index 0.35 (the under-rotation
+    symptom is present). Pin: the canonical "didn't trail-brake
+    deep enough so the car wouldn't rotate" diagnostic produces
+    an insight; coexists with T126 (active understeer, different
+    actionable: T126 = ease throttle, T128 = trail brake deeper)."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "trail_brake_release_distance_m_before_apex": 15.0,
+            "mid_corner_understeer_index": 0.35,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TRAIL_BRAKE_RULE_ID in fired_ids, (
+        f"expected {_TRAIL_BRAKE_RULE_ID} to fire on combined "
+        f"short-trail-brake + understeer context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_trail_brake_silent_when_brake_trailed_deep() -> None:
+    """Mid-corner understeer 0.35 (some under-rotation) but
+    brake released only 2m before apex (driver IS trail-braking
+    deep). The rule must NOT fire — under-rotation despite deep
+    trail-brake is a different problem (setup, grip, line) and
+    coaching "trail the brake deeper" would be wrong. Pin: the
+    conjunction prevents prescribing more trail-brake to a
+    driver who's already trailing it correctly."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "trail_brake_release_distance_m_before_apex": 2.0,
+            "mid_corner_understeer_index": 0.35,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TRAIL_BRAKE_RULE_ID not in fired_ids, (
+        f"{_TRAIL_BRAKE_RULE_ID} fired on deep-trail / under-"
+        f"steer context — would prescribe more trail to a "
+        f"driver already trailing deep. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_trail_brake_silent_when_no_understeer() -> None:
+    """Brake released 15m before apex (early release) but
+    mid-corner understeer index only 0.10 (chassis is neutral
+    — driver's short trail-brake is deliberate, e.g. bumpy
+    entry where trailing the brake unsettles the chassis).
+    The rule must NOT fire — without an under-rotation symptom,
+    short trail-brake is technique choice, not error. Pin: the
+    conjunction prevents flagging deliberate short-trail
+    technique on bumpy or low-grip entries."""
+    rules = load_rules(CORNERING_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "trail_brake_release_distance_m_before_apex": 15.0,
+            "mid_corner_understeer_index": 0.10,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _TRAIL_BRAKE_RULE_ID not in fired_ids, (
+        f"{_TRAIL_BRAKE_RULE_ID} fired on early-release / no-"
+        f"understeer context — flagged a deliberate short-trail "
+        f"technique. Fired: {sorted(fired_ids)}"
     )

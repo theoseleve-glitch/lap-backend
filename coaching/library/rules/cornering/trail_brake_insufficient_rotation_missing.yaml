@@ -1,0 +1,37 @@
+id: "cs.trail_brake_insufficient.rotation_missing"
+version: 1
+category: technique
+subcategory: trail_brake
+difficulty: beginner
+
+detection:
+  signal: trail_brake_release_distance_m_before_apex
+  condition: "trail_brake_release_distance_m_before_apex >= 10.0 and mid_corner_understeer_index >= 0.30"
+  context:
+    must_have_channels: ["brake", "steering", "g_lat"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 10m = low, 15m = medium, 25m = high"
+
+explanation_template:
+  beginner: "On {{corner}} you released the brake {{trail_brake_release_distance_m_before_apex}}m before the apex, and the car wouldn't rotate (understeer index {{mid_corner_understeer_index}}). Trail-braking past initial turn-in keeps weight on the front tires and makes the car pivot. Carry a light brake pressure into the apex — release in proportion to steering unwind, not before."
+  intermediate: "Insufficient trail-brake on {{corner}} — release {{trail_brake_release_distance_m_before_apex}}m pre-apex, understeer {{mid_corner_understeer_index}}. Brake-off too early unloads the front before the chassis has finished rotating; map brake pressure release to steering unwind so weight transfer aids the turn-in instead of fighting it."
+  advanced: "Trail-brake deficit on {{corner}}: release_dist={{trail_brake_release_distance_m_before_apex}}m, us_index={{mid_corner_understeer_index}}. Brake release before steering peak transfers weight rearward at the worst moment; couple release to steering-rate derivative (release ramp ~= unwind ramp) to recover ~0.05-0.15s/corner of rotation. Distinct prescription from T126 (T126 = ease throttle at apex; T128 = trail brake deeper into apex)."
+
+prescription:
+  drill_template_id: "drill.trail_brake_to_apex"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "trail_brake_release_distance_m_before_apex"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["trail-braking is harder to learn in real cars (consequence cost is higher) and easier to over-apply in sim (deterministic feedback). The diagnostic transfers; the corrective drill should bias toward shorter trail extensions in real until brake-pedal feedback is calibrated."]
