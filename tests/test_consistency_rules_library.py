@@ -47,6 +47,7 @@ _PASS_ABORT_RULE_ID = "rc.passing_attempts.abort_rate"
 _DEFENSIVE_LINE_RULE_ID = "rc.defensive_line.too_often"
 _BLUE_FLAG_RULE_ID = "rc.blue_flag_compliance.slow_lift"
 _RESTART_LAUNCH_RULE_ID = "rc.restart_acceleration.poor_launch"
+_PIT_EXIT_RULE_ID = "rc.pit_exit_safety.slow_merge"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -96,6 +97,12 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # lap vs the driver's own clean-air pace.
     "restart_event_count": 4,
     "restart_first_lap_avg_speed_deficit_kmh": 6.5,
+    # T139 — pit-exit merge signals. Speed deficit at the first
+    # racing-speed measurement after the pit-exit blend line vs
+    # the driver's own clean-air pace at that point on the
+    # circuit. Same self-as-baseline shape as T138.
+    "pit_exit_event_count": 3,
+    "pit_exit_avg_merge_speed_deficit_kmh": 8.0,
 }
 
 
@@ -764,4 +771,86 @@ def test_restart_launch_silent_when_launch_is_clean() -> None:
         f"{_RESTART_LAUNCH_RULE_ID} fired on clean-launch driver — "
         f"coached launch quality to a driver matching their own "
         f"pace. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T139: rc.pit_exit_safety.slow_merge -----------------------
+
+
+def test_pit_exit_fires_on_combined_deficit_and_enough_exits() -> None:
+    """Both signals firing: avg merge deficit 8.0 km/h vs
+    clean-air pace at the first racing-speed point after the
+    pit exit blend line (well above the 5.0 km/h firing
+    threshold) AND 3 pit exits in the session (well past the
+    2-exit minimum sample size). Pin: the canonical "you exit
+    the pits and don't get back to racing speed quickly enough"
+    pattern produces an insight — the cars behind have to lift,
+    which is both a safety risk (compressed train into T1) and
+    a courtesy issue (slow merger costs them lap time)."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pit_exit_event_count": 3,
+            "pit_exit_avg_merge_speed_deficit_kmh": 8.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PIT_EXIT_RULE_ID in fired_ids, (
+        f"expected {_PIT_EXIT_RULE_ID} to fire on combined "
+        f"high-deficit + enough-exits context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_pit_exit_silent_when_event_count_too_low() -> None:
+    """High deficit (8.0 km/h) but only 1 pit exit. A single
+    exit can be ruined by a car ahead exiting at the same
+    moment, an SC deployment forcing a slow blend, or a
+    pit-lane speed-limit transition timing issue. The rule
+    must NOT fire — sample size guard prevents diagnosing a
+    merge-discipline problem from a single contextually-noisy
+    pit exit. Pin: the >=2 event minimum requires the pattern
+    to show twice."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pit_exit_event_count": 1,
+            "pit_exit_avg_merge_speed_deficit_kmh": 8.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PIT_EXIT_RULE_ID not in fired_ids, (
+        f"{_PIT_EXIT_RULE_ID} fired on 1-exit sample — coached "
+        f"merge discipline from event-noise. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_pit_exit_silent_when_merge_is_clean() -> None:
+    """Plenty of exits (3) but avg deficit only 1.5 km/h — the
+    driver matches their own clean-air pace at the merge point
+    within the noise floor. The rule must NOT fire — coaching
+    "your pit exits are slow" to a driver hitting their own
+    reference pace is noise. Pin: the deficit guard prevents
+    firing on every multi-stop driver regardless of merge
+    quality. The rule targets the slow-merge failure mode
+    specifically, not pit-stop frequency."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "pit_exit_event_count": 3,
+            "pit_exit_avg_merge_speed_deficit_kmh": 1.5,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _PIT_EXIT_RULE_ID not in fired_ids, (
+        f"{_PIT_EXIT_RULE_ID} fired on clean-merge driver — "
+        f"coached merge discipline to a driver matching their "
+        f"own pace. Fired: {sorted(fired_ids)}"
     )

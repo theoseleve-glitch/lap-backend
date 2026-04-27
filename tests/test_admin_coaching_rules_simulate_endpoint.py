@@ -324,6 +324,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # 4 satisfies the >=2 sample-size guard.)
     "restart_event_count": 4,
     "restart_first_lap_avg_speed_deficit_kmh": 1.0,
+    # T139 pit-exit merge signals at clean-merge values so
+    # `rc.pit_exit_safety.slow_merge` stays silent. (Speed
+    # deficit 1.5 km/h is well below the >=5.0 km/h firing
+    # threshold and is the load-bearing silencer; pit-exit
+    # count 3 satisfies the >=2 sample-size guard.)
+    "pit_exit_event_count": 3,
+    "pit_exit_avg_merge_speed_deficit_kmh": 1.5,
 }
 
 # A context where every braking rule should be silent — values
@@ -499,6 +506,13 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # firing threshold).
     "restart_event_count": 4,
     "restart_first_lap_avg_speed_deficit_kmh": 1.0,
+    # T139 pit-exit merge signals at clean-merge values so
+    # `rc.pit_exit_safety.slow_merge` stays silent. Same shape
+    # as the firing fixture; load-bearing silencer is the speed
+    # deficit (1.5 km/h, well below the >=5.0 km/h firing
+    # threshold).
+    "pit_exit_event_count": 3,
+    "pit_exit_avg_merge_speed_deficit_kmh": 1.5,
 }
 
 
