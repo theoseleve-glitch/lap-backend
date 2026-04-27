@@ -45,6 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ADAPTATION_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "adaptation"
 
 _GRIP_CHANGE_RULE_ID = "ad.grip_change.slow_to_adapt"
+_SETUP_REGRESSION_RULE_ID = "ad.setup_change.regression"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -63,6 +64,15 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # line-choice profile aligns with the new grip level.
     "grip_level_change_magnitude_pct": 0.12,
     "laps_to_input_recalibration": 5,
+    # T152 — setup-change regression. Caller supplies the lap-time
+    # regression in seconds (positive = slower after the setup
+    # change vs the before-change baseline) and the count of clean
+    # laps post-change confirming the regression isn't noise. The
+    # rule fires when both hold — i.e., the change made the car
+    # slower AND we have enough laps to know it's real, but the
+    # driver/engineer kept the setup anyway.
+    "setup_change_lap_time_regression_seconds": 0.35,
+    "clean_lap_count_post_setup_change": 8,
 }
 
 
@@ -193,4 +203,87 @@ def test_grip_change_silent_when_driver_adapted_promptly() -> None:
         f"{_GRIP_CHANGE_RULE_ID} fired on fast-adapting driver — "
         f"coached adaptation speed to a driver who already adapted "
         f"promptly. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T152: ad.setup_change.regression --------------------------
+
+
+def test_setup_regression_fires_on_combined_regression_and_enough_laps() -> None:
+    """Both signals firing: lap-time regression of 0.35s vs
+    pre-change baseline (well above the 0.20s firing threshold —
+    meaningful regression, not lap-time noise) AND 8 clean laps
+    post-change (well past the 5-lap minimum sample size needed
+    to confirm the regression isn't a single-lap fluke or a tire-
+    warm-up artifact). Pin: the canonical "the setup change made
+    the car slower and you didn't revert it" pattern produces an
+    insight — distinct from generic "you're slow today" because
+    it attributes the slowdown to a specific reversible decision."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "setup_change_lap_time_regression_seconds": 0.35,
+            "clean_lap_count_post_setup_change": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _SETUP_REGRESSION_RULE_ID in fired_ids, (
+        f"expected {_SETUP_REGRESSION_RULE_ID} to fire on combined "
+        f"large-regression + enough-laps context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_setup_regression_silent_when_lap_count_too_low() -> None:
+    """Regression magnitude of 0.35s but only 2 clean laps post-
+    setup-change. A 2-lap sample is dominated by warm-up
+    transients (cold tires, first-flying-lap concentration spike,
+    track-evolution noise). The rule must NOT fire — sample size
+    guard prevents premature regression diagnosis. Pin: the
+    >=5 lap minimum keeps the post-change average meaningful;
+    coaching "revert the setup" after 2 laps would chase noise."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "setup_change_lap_time_regression_seconds": 0.35,
+            "clean_lap_count_post_setup_change": 2,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _SETUP_REGRESSION_RULE_ID not in fired_ids, (
+        f"{_SETUP_REGRESSION_RULE_ID} fired on 2-lap sample — coached "
+        f"setup revert from a sample size where the regression is "
+        f"warm-up noise. Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_setup_regression_silent_when_change_neutral_or_improvement() -> None:
+    """Plenty of clean laps (8) but the setup change improved
+    lap time by 0.10s (regression value -0.10, well below the
+    >=0.20 firing threshold). The change was good — coaching
+    "revert" would undo a real improvement. The rule must NOT
+    fire — coaching "your setup change made you slower" to a
+    driver whose setup change made them faster is exactly
+    backwards. Pin: the regression-magnitude guard prevents
+    firing on every setup-change event regardless of direction.
+    The rule targets the specific failure mode of regressions
+    that weren't reverted, not setup changes in general."""
+    rules = load_rules(ADAPTATION_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "setup_change_lap_time_regression_seconds": -0.10,
+            "clean_lap_count_post_setup_change": 8,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _SETUP_REGRESSION_RULE_ID not in fired_ids, (
+        f"{_SETUP_REGRESSION_RULE_ID} fired on improved-pace setup — "
+        f"coached revert on a setup change that made the driver "
+        f"faster. Fired: {sorted(fired_ids)}"
     )

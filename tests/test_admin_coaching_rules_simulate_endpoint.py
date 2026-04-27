@@ -417,6 +417,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # silencer.)
     "grip_level_change_magnitude_pct": 0.02,
     "laps_to_input_recalibration": 1,
+    # T152 setup-regression signals at neutral/short values so
+    # `ad.setup_change.regression` stays silent. (Regression
+    # 0.05s is well below the >=0.20s firing threshold and is
+    # the load-bearing silencer; clean-lap count 4 is also
+    # below the >=5 sample-size guard for defense in depth.)
+    "setup_change_lap_time_regression_seconds": 0.05,
+    "clean_lap_count_post_setup_change": 4,
 }
 
 # A context where every braking rule should be silent — values
@@ -666,6 +673,11 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # as firing fixture; both signals quiet independently.
     "grip_level_change_magnitude_pct": 0.02,
     "laps_to_input_recalibration": 1,
+    # T152 setup-regression signals at neutral/short values so
+    # `ad.setup_change.regression` stays silent. Same shape as
+    # firing fixture; both signals quiet independently.
+    "setup_change_lap_time_regression_seconds": 0.05,
+    "clean_lap_count_post_setup_change": 4,
 }
 
 
