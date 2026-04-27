@@ -743,6 +743,12 @@ class StrategyPlan(Base):
         default=list,
         server_default="[]",
     )
+    # T102 — 0-100 plan-vs-actual execution score. Null until
+    # the session's strategy data is finalized (intermediate
+    # plan-only state has no actual yet, so no score).
+    execution_score: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
 
 
 class StrategyEvent(Base):
