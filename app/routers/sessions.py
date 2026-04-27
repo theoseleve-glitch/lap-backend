@@ -1,5 +1,6 @@
 import json
 import time
+from dataclasses import dataclass
 from typing import Annotated, cast
 from uuid import UUID
 
@@ -28,6 +29,8 @@ from lap_schemas.v1 import (
     StrategyHistoryList,
     StrategyPlan,
     StrategyPlanCreate,
+    StrategySimulateRequest,
+    StrategySimulateResponse,
     StrategyTemplate,
     StrategyTemplateCreate,
     StrategyTemplateList,
@@ -54,6 +57,12 @@ from app.deps import (
 from domain.checksum_validator import (
     ChecksumMismatchError,
     verify_chunk_checksum,
+)
+from domain.strategy_caution_recalc import (
+    compute_strategy_divergence_with_cautions,
+)
+from domain.strategy_execution_score import (
+    compute_strategy_execution_score,
 )
 from infra.idempotency_cache import IdempotencyCache
 from infra.metrics import ingest_duration_seconds, sessions_ingested_total
@@ -1030,5 +1039,94 @@ async def delete_strategy_template(
     )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@dataclass(frozen=True)
+class _HypotheticalPlan:
+    """Adapter exposing the StrategyPlanCreate-shaped fields the
+    domain divergence functions read via Protocol. Keeps T101's
+    primitive ignorant of Pydantic / ORM specifics."""
+    planned_stints: int
+    planned_fuel_liters: float
+    planned_pit_laps: list[int]
+
+
+@router.post(
+    "/{session_id}/strategy/simulate",
+    response_model=StrategySimulateResponse,
+    responses={404: {"description": "session_not_found (or not owned)"}},
+)
+async def simulate_strategy(
+    session_id: UUID,
+    body: StrategySimulateRequest,
+    user: Annotated[UserRow, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StrategySimulateResponse:
+    """T109 — "what if I pitted 2 laps later?". Scores a
+    hypothetical plan against the session's actual events.
+    Read-only: no StrategyPlan is created (the canonical plan
+    lives behind T098 POST and would 409 the simulator).
+
+    Uses T108 caution-aware divergence so the simulated score
+    reflects the cautions that actually occurred — matches the
+    real-world counterfactual ("if I had pitted differently with
+    the SAME race conditions").
+
+    Authz: same 404 status parity as the read endpoints
+    (other-driver session = "not found" prevents enumeration).
+    """
+    profile = (
+        await db.execute(
+            select(DriverProfileRow).where(
+                DriverProfileRow.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    session_row = (
+        await db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if (
+        session_row is None
+        or profile is None
+        or session_row.driver_id != profile.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="session_not_found",
+        )
+    event_rows = (
+        await db.execute(
+            select(StrategyEventRow)
+            .where(StrategyEventRow.session_id == session_id)
+            .order_by(
+                StrategyEventRow.at_lap.asc(),
+                StrategyEventRow.created_at.asc(),
+            )
+        )
+    ).scalars().all()
+    plan = _HypotheticalPlan(
+        planned_stints=body.planned_stints,
+        planned_fuel_liters=body.planned_fuel_liters,
+        planned_pit_laps=list(body.planned_pit_laps),
+    )
+    divergence = compute_strategy_divergence_with_cautions(
+        plan=plan,
+        events=event_rows,
+        total_race_laps=body.total_race_laps,
+    )
+    score = compute_strategy_execution_score(
+        divergence=divergence,
+        planned_fuel_liters=body.planned_fuel_liters,
+        total_race_laps=body.total_race_laps,
+    )
+    return StrategySimulateResponse(
+        pit_lap_delta_total=divergence.pit_lap_delta_total,
+        fuel_delta_liters=divergence.fuel_delta_liters,
+        stint_duration_delta_laps=divergence.stint_duration_delta_laps,
+        execution_score=score,
+    )
+
 
 
