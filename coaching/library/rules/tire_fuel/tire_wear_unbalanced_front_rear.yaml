@@ -1,0 +1,37 @@
+id: "tm.tire_wear.unbalanced_front_rear"
+version: 1
+category: strategy
+subcategory: tire_wear
+difficulty: intermediate
+
+detection:
+  signal: tire_wear_front_rear_imbalance_abs_pct
+  condition: "tire_wear_front_rear_imbalance_abs_pct >= 0.20 and stint_lap_count >= 5"
+  context:
+    must_have_channels: ["tire_wear", "lap_number", "stint_index"]
+    min_corner_priority: low
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.20 = low, 0.35 = medium, 0.55 = high"
+
+explanation_template:
+  beginner: "Across {{stint_lap_count}} laps your fronts and rears wore {{tire_wear_front_rear_imbalance_abs_pct}} apart from each other. That's a driving-style signature: front-heavy wear usually means too much trail braking into the apex, rear-heavy usually means too much throttle on exit. The axle that wears faster ends the stint first — and a stint length is decided by your worst tire, not your average. Even out the load."
+  intermediate: "Front/rear wear imbalance magnitude {{tire_wear_front_rear_imbalance_abs_pct}} over n={{stint_lap_count}} laps. Magnitude framing covers both directions: front-heavy = trail-brake bias / heavy mid-corner steering input; rear-heavy = early-throttle bias / wheelspin on exit. Diagnose direction from the signed signal upstream, prescribe the matching drill — straighter mid-corner for front-heavy, progressive throttle for rear-heavy. Stint length is bottlenecked by the fast-wearing axle; balanced wear extends usable stint by 15-25% on the same compound."
+  advanced: "|imbalance| {{tire_wear_front_rear_imbalance_abs_pct}}, n={{stint_lap_count}}. The economic frame: per-stint usable laps ≈ min(front_life, rear_life), so an imbalanced driver gets `1 - imbalance/2` of the balanced driver's stint length on the same compound. At 0.30 imbalance you're losing ~15% of the stint, which compounds across a race into a forced-extra-stop strategy or a post-stint pace cliff. Distinct from T141 (`tm.tire_temp_overheat.aggressive_early`) — that's a thermal cause, this is a load-distribution cause; both can fire together when the same axle is overheating AND wearing fast. Same magnitude pattern as T134 (brake-point drift)."
+
+prescription:
+  drill_template_id: "drill.axle_load_balance_drive"
+  expected_gain_kmh: "0-1"
+  success_condition:
+    metric: "tire_wear_front_rear_imbalance_abs_pct"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["axle-load-balance discipline transfers — the underlying skill (smoothing trail-brake / throttle-application transitions) is the same on either platform. Sim tire models vary in wear realism: some titles model wear as a flat function of slip energy (which captures imbalance well), others as a simpler lap-count function (which masks it). The rule is most useful in sim titles with energy-based wear models. Real-car wear is influenced by camber/toe drift across the stint, which can inflate the imbalance signal independently of skill; threshold may need a small relaxation (e.g., 0.25) for real-car cohorts."]

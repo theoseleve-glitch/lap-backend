@@ -346,6 +346,13 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # firing threshold; either alone is load-bearing silencer.)
     "tire_temp_avg_above_optimal_first_3_laps_celsius": 3.0,
     "early_lap_throttle_application_pct_above_baseline": 0.02,
+    # T142 tire-wear-imbalance signal at balanced-axle value so
+    # `tm.tire_wear.unbalanced_front_rear` stays silent.
+    # (Imbalance magnitude 0.05 is well below the >=0.20 firing
+    # threshold and is the load-bearing silencer; the existing
+    # `stint_lap_count: 100` from T074 above already satisfies
+    # T142's >=5 lap sample-size guard.)
+    "tire_wear_front_rear_imbalance_abs_pct": 0.05,
 }
 
 # A context where every braking rule should be silent — values
@@ -541,6 +548,13 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # independently.
     "tire_temp_avg_above_optimal_first_3_laps_celsius": 3.0,
     "early_lap_throttle_application_pct_above_baseline": 0.02,
+    # T142 tire-wear-imbalance signal at balanced-axle value so
+    # `tm.tire_wear.unbalanced_front_rear` stays silent. Same
+    # shape as the firing fixture; load-bearing silencer is the
+    # imbalance magnitude (0.05, well below the >=0.20 threshold).
+    # The existing `stint_lap_count: 100` from T074 above already
+    # satisfies T142's >=5 sample-size guard.
+    "tire_wear_front_rear_imbalance_abs_pct": 0.05,
 }
 
 

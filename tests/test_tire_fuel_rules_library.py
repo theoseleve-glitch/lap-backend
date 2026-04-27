@@ -43,6 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TIRE_FUEL_DIR = REPO_ROOT / "coaching" / "library" / "rules" / "tire_fuel"
 
 _EARLY_OVERHEAT_RULE_ID = "tm.tire_temp_overheat.aggressive_early"
+_WEAR_IMBALANCE_RULE_ID = "tm.tire_wear.unbalanced_front_rear"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -51,6 +52,15 @@ _EARLY_OVERHEAT_RULE_ID = "tm.tire_temp_overheat.aggressive_early"
 _TEMPLATE_VARS: dict[str, Any] = {
     "tire_temp_avg_above_optimal_first_3_laps_celsius": 12.0,
     "early_lap_throttle_application_pct_above_baseline": 0.18,
+    # T142 — front/rear wear-imbalance magnitude. Caller supplies
+    # abs() of the (front - rear) wear-rate ratio; condition
+    # compiler doesn't allow function calls (same pattern as
+    # T134's magnitude framing). Magnitude framing covers both
+    # front-heavy (over-trail-braking) and rear-heavy (over-
+    # exit-aggression) failure modes with one threshold.
+    "tire_wear_front_rear_imbalance_abs_pct": 0.30,
+    "tire_wear_front_rear_imbalance_signed_pct": 0.30,
+    "stint_lap_count": 12,
 }
 
 
@@ -179,4 +189,84 @@ def test_early_overheat_silent_when_temps_in_window() -> None:
         f"{_EARLY_OVERHEAT_RULE_ID} fired on in-window-temp "
         f"driver — coached tire-saving to a driver whose tires "
         f"aren't overheating. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T142: tm.tire_wear.unbalanced_front_rear ------------------
+
+
+def test_wear_imbalance_fires_on_combined_imbalance_and_long_stint() -> None:
+    """Both signals firing: front/rear wear imbalance magnitude
+    30% (well above the 0.20 firing threshold — clear axle
+    bias) AND 12 laps in the stint (well past the 5-lap
+    minimum needed to compute meaningful wear measurements).
+    Pin: the canonical "your driving style is loading one axle
+    way more than the other" pattern produces an insight —
+    diagnosis covers both front-heavy (over-trail-braking)
+    and rear-heavy (over-exit-aggression) via magnitude framing."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "tire_wear_front_rear_imbalance_abs_pct": 0.30,
+            "stint_lap_count": 12,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WEAR_IMBALANCE_RULE_ID in fired_ids, (
+        f"expected {_WEAR_IMBALANCE_RULE_ID} to fire on combined "
+        f"high-imbalance + long-stint context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_wear_imbalance_silent_when_stint_too_short() -> None:
+    """Imbalance magnitude 30% (would fire on a long stint) but
+    only 3 laps in the stint. Wear measurements across 1-3 laps
+    are dominated by warm-up transient effects (carcass temp
+    swings, pressure ramp, surface scrubbing) — not steady-state
+    wear pattern. The rule must NOT fire — sample size guard
+    prevents diagnosing imbalance from out-lap noise. Pin: the
+    >=5 lap minimum keeps wear-rate measurements steady-state."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "tire_wear_front_rear_imbalance_abs_pct": 0.30,
+            "stint_lap_count": 3,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WEAR_IMBALANCE_RULE_ID not in fired_ids, (
+        f"{_WEAR_IMBALANCE_RULE_ID} fired on 3-lap stint — coached "
+        f"wear pattern from warm-up-transient noise. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_wear_imbalance_silent_when_axles_balanced() -> None:
+    """Long stint (12 laps) but imbalance only 5% — the driver's
+    style loads both axles roughly evenly within the noise
+    floor. The rule must NOT fire — coaching "you wear the
+    fronts/rears too much" to a balanced driver is noise. Pin:
+    the imbalance guard prevents firing on every long-stint
+    driver regardless of axle bias. The rule targets the style-
+    driven imbalance failure mode specifically, not stint
+    length."""
+    rules = load_rules(TIRE_FUEL_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "tire_wear_front_rear_imbalance_abs_pct": 0.05,
+            "stint_lap_count": 12,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _WEAR_IMBALANCE_RULE_ID not in fired_ids, (
+        f"{_WEAR_IMBALANCE_RULE_ID} fired on balanced-wear driver — "
+        f"coached axle-bias to a driver loading both axles evenly. "
+        f"Fired: {sorted(fired_ids)}"
     )
