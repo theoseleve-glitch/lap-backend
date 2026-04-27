@@ -1,0 +1,37 @@
+id: "th.throttle_lift.mid_corner"
+version: 1
+category: technique
+subcategory: throttle_lift
+difficulty: beginner
+
+detection:
+  signal: mid_corner_lift_event_count
+  condition: "mid_corner_lift_event_count >= 1 and lift_throttle_drop_pct >= 0.20"
+  context:
+    must_have_channels: ["throttle", "wheel_speed", "g_lat"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 2
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 0.20 = low, 0.35 = medium, 0.50 = high"
+
+explanation_template:
+  beginner: "On {{corner}} you involuntarily lifted off the throttle {{mid_corner_lift_event_count}} time(s) mid-corner, dropping the pedal by {{lift_throttle_drop_pct}}. The car scared you and you bailed — that's a confidence or balance problem. Either commit through the corner or address the chassis instability that's making you lift."
+  intermediate: "Mid-corner reactive lift on {{corner}} — {{mid_corner_lift_event_count}} event(s), peak drop {{lift_throttle_drop_pct}}. Reactive lifts shed mid-corner load and unsettle the rear; root-cause is either driver confidence (commit drill) or platform instability (check rear damping, rear wing, tire pressures)."
+  advanced: "Involuntary mid-corner lift on {{corner}}: events={{mid_corner_lift_event_count}}, peak_drop={{lift_throttle_drop_pct}}. Lifts mid-load transfer the chassis forward, lighten the rear, and cost ~0.1-0.3s/corner. Diagnose: if g_lat envelope drops with each lift, it's a confidence reaction; if g_lat is flat through the lift, it's a setup/grip ceiling — different fix."
+
+prescription:
+  drill_template_id: "drill.mid_corner_throttle_stability"
+  expected_gain_kmh: "1-3"
+  success_condition:
+    metric: "mid_corner_lift_event_count"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: true
+    caveats: ["sim drivers lift more freely because consequences are zero — real-world reactive lifts often signal real grip ceilings the sim doesn't model accurately, especially in low-grip conditions"]

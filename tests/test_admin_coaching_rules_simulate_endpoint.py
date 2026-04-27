@@ -192,6 +192,10 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # so `th.partial_throttle.mid_corner` stays silent.
     "partial_throttle_duration_at_apex_ms": 50,
     "coast_time_pct_in_corner": 0.05,
+    # T115 throttle-lift signals at no-event values so
+    # `th.throttle_lift.mid_corner` stays silent.
+    "mid_corner_lift_event_count": 0,
+    "lift_throttle_drop_pct": 0.05,
 }
 
 # A context where every braking rule should be silent — values
@@ -242,6 +246,10 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # so `th.partial_throttle.mid_corner` stays silent.
     "partial_throttle_duration_at_apex_ms": 50,
     "coast_time_pct_in_corner": 0.05,
+    # T115 throttle-lift signals at no-event values so
+    # `th.throttle_lift.mid_corner` stays silent.
+    "mid_corner_lift_event_count": 0,
+    "lift_throttle_drop_pct": 0.05,
 }
 
 

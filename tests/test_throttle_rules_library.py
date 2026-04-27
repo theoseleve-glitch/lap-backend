@@ -41,6 +41,7 @@ _SNAP_RULE_ID = "th.early_throttle.snap_oversteer"
 _LATE_RULE_ID = "th.late_throttle.exit_speed_loss"
 _ABRUPT_RULE_ID = "th.abrupt_pickup.traction_break"
 _PARTIAL_RULE_ID = "th.partial_throttle.mid_corner"
+_LIFT_RULE_ID = "th.throttle_lift.mid_corner"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -61,6 +62,9 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # T114 — partial-throttle / coasting signals.
     "partial_throttle_duration_at_apex_ms": 350,
     "coast_time_pct_in_corner": 0.30,
+    # T115 — involuntary mid-corner lift signals.
+    "mid_corner_lift_event_count": 2,
+    "lift_throttle_drop_pct": 0.35,
 }
 
 
@@ -405,5 +409,77 @@ def test_partial_throttle_silent_when_no_coast() -> None:
     assert _PARTIAL_RULE_ID not in fired_ids, (
         f"{_PARTIAL_RULE_ID} fired on dwell-but-no-coast — "
         f"flagged a throttle-modulating driver. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T115: th.throttle_lift.mid_corner -------------------------
+
+
+def test_throttle_lift_fires_on_combined_event_and_drop() -> None:
+    """Both signals firing: 2 mid-corner lift events with a peak
+    drop magnitude of 35% (driver bailed off the pedal twice
+    mid-corner, each time meaningfully). Pin: the canonical
+    "scared the car, lifted to settle it" reactive pattern
+    produces an insight."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mid_corner_lift_event_count": 2,
+            "lift_throttle_drop_pct": 0.35,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LIFT_RULE_ID in fired_ids, (
+        f"expected {_LIFT_RULE_ID} to fire on combined event + "
+        f"meaningful-drop context, got {sorted(fired_ids)}"
+    )
+
+
+def test_throttle_lift_silent_when_no_lift_events() -> None:
+    """Zero lift events but a high drop_pct value (could be a
+    coast-down at corner exit — not mid-corner, not reactive).
+    The rule must NOT fire — without a detected mid-corner lift
+    event, magnitude alone is meaningless. Pin: the conjunction
+    protects against flagging non-mid-corner pedal motions."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mid_corner_lift_event_count": 0,
+            "lift_throttle_drop_pct": 0.35,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LIFT_RULE_ID not in fired_ids, (
+        f"{_LIFT_RULE_ID} fired on no-events / high-drop context "
+        f"— flagged exit coast-down as mid-corner lift. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_throttle_lift_silent_when_drop_too_small() -> None:
+    """2 lift events but the largest drop is only 10% (driver
+    is just modulating throttle through the apex, not bailing
+    off). The rule must NOT fire — small drops are normal
+    pedal-feathering technique; reactive lifts are sharper.
+    Pin: the conjunction prevents flagging deliberate
+    modulation as panic."""
+    rules = load_rules(THROTTLE_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "mid_corner_lift_event_count": 2,
+            "lift_throttle_drop_pct": 0.10,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _LIFT_RULE_ID not in fired_ids, (
+        f"{_LIFT_RULE_ID} fired on events-but-small-drop context "
+        f"— flagged a feathering driver as panic-lifting. "
         f"Fired: {sorted(fired_ids)}"
     )
