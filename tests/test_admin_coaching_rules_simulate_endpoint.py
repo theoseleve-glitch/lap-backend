@@ -331,6 +331,14 @@ _FIRING_CONTEXT: dict[str, Any] = {
     # count 3 satisfies the >=2 sample-size guard.)
     "pit_exit_event_count": 3,
     "pit_exit_avg_merge_speed_deficit_kmh": 1.5,
+    # T140 inside-overtake exit-deficit signals at clean-line-
+    # selection values so `rc.overtake_position.inside_inefficient`
+    # stays silent. (Exit deficit 1.0 km/h is well below the
+    # >=4.0 km/h firing threshold and is the load-bearing
+    # silencer; completion count 4 satisfies the >=3
+    # sample-size guard.)
+    "inside_overtake_completion_count": 4,
+    "inside_overtake_avg_exit_speed_deficit_kmh": 1.0,
 }
 
 # A context where every braking rule should be silent — values
@@ -513,6 +521,13 @@ _QUIET_CONTEXT: dict[str, Any] = {
     # threshold).
     "pit_exit_event_count": 3,
     "pit_exit_avg_merge_speed_deficit_kmh": 1.5,
+    # T140 inside-overtake exit-deficit signals at clean-line-
+    # selection values so `rc.overtake_position.inside_inefficient`
+    # stays silent. Same shape as the firing fixture; load-
+    # bearing silencer is the exit deficit (1.0 km/h, well below
+    # the >=4.0 km/h firing threshold).
+    "inside_overtake_completion_count": 4,
+    "inside_overtake_avg_exit_speed_deficit_kmh": 1.0,
 }
 
 

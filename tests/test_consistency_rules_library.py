@@ -48,6 +48,7 @@ _DEFENSIVE_LINE_RULE_ID = "rc.defensive_line.too_often"
 _BLUE_FLAG_RULE_ID = "rc.blue_flag_compliance.slow_lift"
 _RESTART_LAUNCH_RULE_ID = "rc.restart_acceleration.poor_launch"
 _PIT_EXIT_RULE_ID = "rc.pit_exit_safety.slow_merge"
+_INSIDE_OVERTAKE_RULE_ID = "rc.overtake_position.inside_inefficient"
 
 
 # Template vars referenced by the rule's explanations. Any
@@ -103,6 +104,12 @@ _TEMPLATE_VARS: dict[str, Any] = {
     # circuit. Same self-as-baseline shape as T138.
     "pit_exit_event_count": 3,
     "pit_exit_avg_merge_speed_deficit_kmh": 8.0,
+    # T140 — inside-overtake exit-deficit signals. Tactical-vs-
+    # execution rule: completed inside overtakes that cost more
+    # exit speed than the position is worth. Diagnoses
+    # line-selection bias, not aggression.
+    "inside_overtake_completion_count": 4,
+    "inside_overtake_avg_exit_speed_deficit_kmh": 6.0,
 }
 
 
@@ -853,4 +860,84 @@ def test_pit_exit_silent_when_merge_is_clean() -> None:
         f"{_PIT_EXIT_RULE_ID} fired on clean-merge driver — "
         f"coached merge discipline to a driver matching their "
         f"own pace. Fired: {sorted(fired_ids)}"
+    )
+
+
+# -- T140: rc.overtake_position.inside_inefficient -------------
+
+
+def test_inside_overtake_fires_on_combined_deficit_and_enough_passes() -> None:
+    """Both signals firing: avg exit-speed deficit 6.0 km/h on
+    completed inside overtakes (well above the 4.0 km/h firing
+    threshold — consistently giving back exit drive) AND 4
+    completed inside overtakes (well past the 3-pass minimum
+    sample size). Pin: the canonical "you got past on the
+    inside but the outside line would have netted more across
+    exit and the next sector" pattern produces an insight —
+    coaches line selection, not aggression."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "inside_overtake_completion_count": 4,
+            "inside_overtake_avg_exit_speed_deficit_kmh": 6.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _INSIDE_OVERTAKE_RULE_ID in fired_ids, (
+        f"expected {_INSIDE_OVERTAKE_RULE_ID} to fire on combined "
+        f"high-deficit + enough-passes context, got "
+        f"{sorted(fired_ids)}"
+    )
+
+
+def test_inside_overtake_silent_when_completion_count_too_low() -> None:
+    """High exit deficit (6.0 km/h) but only 1 completed inside
+    overtake. A single inside pass can be the right call (e.g.,
+    last-lap defensive opportunity) and the exit deficit is
+    irrelevant to the strategic outcome. The rule must NOT fire —
+    sample size guard prevents diagnosing line-selection bias
+    from a one-off tactical move. Pin: the >=3 completion
+    minimum requires the pattern to show across multiple passes."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "inside_overtake_completion_count": 1,
+            "inside_overtake_avg_exit_speed_deficit_kmh": 6.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _INSIDE_OVERTAKE_RULE_ID not in fired_ids, (
+        f"{_INSIDE_OVERTAKE_RULE_ID} fired on 1-pass sample — "
+        f"coached line selection from a one-off tactical move. "
+        f"Fired: {sorted(fired_ids)}"
+    )
+
+
+def test_inside_overtake_silent_when_exit_drive_preserved() -> None:
+    """Plenty of inside passes (4) but avg exit deficit only
+    1.0 km/h — the driver's inside lines are geometrically
+    appropriate (or on circuits where the inside is the proper
+    line). The rule must NOT fire — coaching "stop going up
+    the inside" to a driver who's converting cleanly is wrong;
+    they're picking the right line. Pin: the deficit guard
+    prevents firing on every aggressive overtaker regardless
+    of whether their line selection actually costs time."""
+    rules = load_rules(CONSISTENCY_DIR)
+    insights = run_rules(
+        rules,
+        context={
+            **_TEMPLATE_VARS,
+            "inside_overtake_completion_count": 4,
+            "inside_overtake_avg_exit_speed_deficit_kmh": 1.0,
+        },
+    )
+    fired_ids = {ins.rule_id for ins in insights}
+    assert _INSIDE_OVERTAKE_RULE_ID not in fired_ids, (
+        f"{_INSIDE_OVERTAKE_RULE_ID} fired on clean-converting "
+        f"driver — coached against geometrically-appropriate "
+        f"inside passes. Fired: {sorted(fired_ids)}"
     )

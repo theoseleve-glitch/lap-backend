@@ -1,0 +1,37 @@
+id: "rc.overtake_position.inside_inefficient"
+version: 1
+category: technique
+subcategory: overtake_position
+difficulty: advanced
+
+detection:
+  signal: inside_overtake_avg_exit_speed_deficit_kmh
+  condition: "inside_overtake_avg_exit_speed_deficit_kmh >= 4.0 and inside_overtake_completion_count >= 3"
+  context:
+    must_have_channels: ["throttle", "speed", "lap_position", "steering"]
+    min_corner_priority: medium
+  evidence_required:
+    min_occurrences_in_session: 1
+    min_sessions_in_window: 2
+    window_days: 14
+
+severity_rule: "linear, 4.0 = low, 6.0 = medium, 9.0 = high"
+
+explanation_template:
+  beginner: "Across {{inside_overtake_completion_count}} inside overtakes you came out {{inside_overtake_avg_exit_speed_deficit_kmh}} km/h slower than the racing line on exit. Inside passes feel decisive but the geometry punishes you — tighter radius, worse exit drive, the car you passed often gets you back on the next straight. Try the cross-over: dive late on the brakes to threaten the inside, then take a normal apex, and use your better exit to stay ahead through the next sector."
+  intermediate: "Inside-overtake exit deficit avg {{inside_overtake_avg_exit_speed_deficit_kmh}} km/h, n={{inside_overtake_completion_count}}. The diagnosis is line-selection bias, not aggression — completed inside passes are succeeding tactically but losing strategically because the next-corner / next-straight delta erases the position. Switch to a cross-over move on long-exit corners: same braking commit, conventional apex, exit drive. Inside lines remain right for short-exit / hairpin geometries."
+  advanced: "Inside-overtake exit deficit {{inside_overtake_avg_exit_speed_deficit_kmh}} km/h over n={{inside_overtake_completion_count}} completions. The line-selection failure mode is preferring decisiveness over geometry — the inside is psychologically committal (visible to the car you're passing), but for medium-to-long-exit corners the cross-over move yields better aggregate position security. Decision rule: if next-zone delta-V > 5 km/h and there's a straight before the next braking zone, the cross-over wins. Cohort comparison is platform-specific (sim drivers tend to over-commit to inside passes due to camera-perspective bias); same `likely_transfers: false` framing as T135."
+
+prescription:
+  drill_template_id: "drill.cross_over_overtake_geometry"
+  expected_gain_kmh: "1-2"
+  success_condition:
+    metric: "inside_overtake_avg_exit_speed_deficit_kmh"
+    comparison: "lte"
+    target_pct: 0.50
+    measurement_window: "next_3_sessions"
+
+transfer_profile:
+  sim_vs_real:
+    likely_transfers: false
+    caveats: ["overtake-line selection diverges most across platforms because the camera-perspective and mirror-distance affordances are different — sim drivers face systematic bias toward inside passes (the inside looks 'more visible' from a static camera position), while real drivers can read the geometry directly through their helmet. Threshold may need a tighter setting (e.g., 3.0 km/h) for sim cohorts and a relaxed one (e.g., 5.0 km/h) for real-car cohorts. Cross-platform cohort comparisons on this signal are actively misleading."]
