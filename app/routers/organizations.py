@@ -659,73 +659,131 @@ async def get_coach_dashboard(
     )
 
     entries = tuple(
-        [
-            await _build_dashboard_entry(db, uid)
-            for uid in driver_user_ids
-        ]
+        await _build_dashboard_entries(db, driver_user_ids)
     )
     return CoachDashboardResponse(entries=entries)
 
 
-async def _build_dashboard_entry(
-    db: AsyncSession, target_user_id: UUID
-) -> CoachDashboardDriverEntry:
-    """Compose a per-driver dashboard row.
+async def _build_dashboard_entries(
+    db: AsyncSession, target_user_ids: list[UUID]
+) -> list[CoachDashboardDriverEntry]:
+    """T190 — bulk-load every per-driver child table in a single
+    query so the dashboard issues a fixed number of queries
+    (4 + 2 setup) regardless of driver count. Pre-T190 this was
+    `_build_dashboard_entry` called in a loop, producing 4N
+    queries (a textbook N+1).
 
     A driver may not have a DriverProfile yet (org member who
     hasn't bootstrapped); in that case the row carries only the
     user_id with everything else nullable / zero. Consistent
     with the schema's defaults.
     """
-    profile = (
-        await db.execute(
-            select(DriverProfileRow).where(
-                DriverProfileRow.user_id == target_user_id
-            )
-        )
-    ).scalar_one_or_none()
-    if profile is None:
-        return CoachDashboardDriverEntry(user_id=target_user_id)
+    if not target_user_ids:
+        return []
 
-    latest_snap = (
-        await db.execute(
-            select(ProgressSnapshotRow)
-            .where(ProgressSnapshotRow.driver_id == profile.id)
-            .order_by(ProgressSnapshotRow.captured_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    open_weaknesses = (
-        await db.execute(
-            select(func.count(WeaknessEpisodeRow.id)).where(
-                WeaknessEpisodeRow.driver_id == profile.id,
-                WeaknessEpisodeRow.status.in_(
-                    _OPEN_WEAKNESS_STATUSES
+    # 1. Bulk-load profiles keyed by user_id.
+    profile_rows = list(
+        (
+            await db.execute(
+                select(DriverProfileRow).where(
+                    DriverProfileRow.user_id.in_(target_user_ids)
+                )
+            )
+        ).scalars()
+    )
+    profile_by_user: dict[UUID, DriverProfileRow] = {
+        p.user_id: p for p in profile_rows
+    }
+    profile_ids = [p.id for p in profile_rows]
+
+    # 2. Latest snapshot per driver. Loading all snapshots for
+    # these drivers and dedup'ing in Python keeps the query
+    # SQLite/Postgres-portable (DISTINCT ON is Postgres-only and
+    # window functions are awkward across both dialects).
+    latest_snap_by_driver: dict[UUID, ProgressSnapshotRow] = {}
+    if profile_ids:
+        snap_rows = (
+            await db.execute(
+                select(ProgressSnapshotRow)
+                .where(
+                    ProgressSnapshotRow.driver_id.in_(profile_ids)
+                )
+                .order_by(
+                    ProgressSnapshotRow.captured_at.desc()
+                )
+            )
+        ).scalars()
+        for snap in snap_rows:
+            if snap.driver_id not in latest_snap_by_driver:
+                latest_snap_by_driver[snap.driver_id] = snap
+
+    # 3. Open-weakness count per driver (single GROUP BY query).
+    weakness_count_by_driver: dict[UUID, int] = {}
+    if profile_ids:
+        for did, count in (
+            await db.execute(
+                select(
+                    WeaknessEpisodeRow.driver_id,
+                    func.count(WeaknessEpisodeRow.id),
+                )
+                .where(
+                    WeaknessEpisodeRow.driver_id.in_(profile_ids),
+                    WeaknessEpisodeRow.status.in_(
+                        _OPEN_WEAKNESS_STATUSES
+                    ),
+                )
+                .group_by(WeaknessEpisodeRow.driver_id)
+            )
+        ).all():
+            weakness_count_by_driver[did] = int(count)
+
+    # 4. Open-prescription count per driver (single GROUP BY query).
+    rx_count_by_driver: dict[UUID, int] = {}
+    if profile_ids:
+        for did, count in (
+            await db.execute(
+                select(
+                    ActionPrescriptionRow.driver_id,
+                    func.count(ActionPrescriptionRow.id),
+                )
+                .where(
+                    ActionPrescriptionRow.driver_id.in_(profile_ids),
+                    ActionPrescriptionRow.status.in_(
+                        _OPEN_RX_STATUSES
+                    ),
+                )
+                .group_by(ActionPrescriptionRow.driver_id)
+            )
+        ).all():
+            rx_count_by_driver[did] = int(count)
+
+    entries: list[CoachDashboardDriverEntry] = []
+    for uid in target_user_ids:
+        profile = profile_by_user.get(uid)
+        if profile is None:
+            entries.append(CoachDashboardDriverEntry(user_id=uid))
+            continue
+        latest = latest_snap_by_driver.get(profile.id)
+        entries.append(
+            CoachDashboardDriverEntry(
+                user_id=uid,
+                display_name=profile.display_name,
+                skill_level=profile.skill_level,
+                overall_score=(
+                    latest.overall_score if latest else None
+                ),
+                last_progress_at=(
+                    latest.captured_at if latest else None
+                ),
+                open_weaknesses=weakness_count_by_driver.get(
+                    profile.id, 0
+                ),
+                open_prescriptions=rx_count_by_driver.get(
+                    profile.id, 0
                 ),
             )
         )
-    ).scalar_one()
-    open_rx = (
-        await db.execute(
-            select(func.count(ActionPrescriptionRow.id)).where(
-                ActionPrescriptionRow.driver_id == profile.id,
-                ActionPrescriptionRow.status.in_(_OPEN_RX_STATUSES),
-            )
-        )
-    ).scalar_one()
-    return CoachDashboardDriverEntry(
-        user_id=target_user_id,
-        display_name=profile.display_name,
-        skill_level=profile.skill_level,
-        overall_score=(
-            latest_snap.overall_score if latest_snap else None
-        ),
-        last_progress_at=(
-            latest_snap.captured_at if latest_snap else None
-        ),
-        open_weaknesses=int(open_weaknesses),
-        open_prescriptions=int(open_rx),
-    )
+    return entries
 
 
 # T174 — KPI windows match the global /admin/kpis convention
