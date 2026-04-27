@@ -23,6 +23,7 @@ from app.routers import endurance as endurance_router
 from app.routers import insights as insights_router
 from app.routers import jobs as jobs_router
 from app.routers import me as me_router
+from app.routers import organizations as organizations_router
 from app.routers import outcomes as outcomes_router
 from app.routers import pairing as pairing_router
 from app.routers import prescriptions as prescriptions_router
@@ -106,6 +107,7 @@ app.include_router(endurance_router.driver_router)
 app.include_router(insights_router.router)
 app.include_router(jobs_router.router)
 app.include_router(me_router.router)
+app.include_router(organizations_router.router)
 app.include_router(outcomes_router.router)
 app.include_router(pairing_router.router)
 app.include_router(prescriptions_router.router)
