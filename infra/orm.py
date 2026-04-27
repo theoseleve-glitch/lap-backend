@@ -696,6 +696,55 @@ class StintRecord(Base):
     lap_time_decay_seconds: Mapped[float] = mapped_column(Float)
 
 
+class StrategyPlan(Base):
+    """T096 — pre-race strategy intent for one session.
+
+    The driver's locked-in plan: stint count, fuel budget, and
+    intended pit-lap numbers. T097's StrategyEvent log carries
+    the runtime timeline (plan/armed/pit/stint_end/fcy/sc); this
+    row is the canonical "what was the pre-race intent" answer.
+
+    UNIQUE on session_id: one canonical plan per session. A
+    re-plan during the race is logged as a new StrategyEvent with
+    kind=plan rather than a row mutation here, so the audit trail
+    survives. Without the constraint, two plans on the same
+    session would both claim "the truth" and downstream
+    plan-vs-actual diffs would have to pick one arbitrarily.
+
+    CASCADE delete from sessions: GDPR right-to-erasure on a
+    session purges its plan with it.
+
+    planned_pit_laps stored as JSON list (cross-dialect; SQLite
+    tests + Postgres prod) — the column is read whole, not
+    queried into, so JSONB's GIN advantage doesn't apply.
+
+    No index beyond the FK index; the only read shape today is
+    "load plan for session X" which the unique constraint already
+    backs with an index.
+    """
+
+    __tablename__ = "strategy_plans"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid6.uuid7)
+    session_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    planned_stints: Mapped[int] = mapped_column(Integer)
+    planned_fuel_liters: Mapped[float] = mapped_column(Float)
+    planned_pit_laps: Mapped[list[int]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+
+
 class TargetEvent(Base):
     """T081 — driver-pinned upcoming sim event or real-life session.
 
